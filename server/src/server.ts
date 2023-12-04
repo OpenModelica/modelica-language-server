@@ -21,6 +21,8 @@ import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 
+import { parser } from './parser';
+
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection(ProposedFeatures.all);
@@ -134,9 +136,18 @@ documents.onDidClose(e => {
 	documentSettings.delete(e.document.uri);
 });
 
+documents.onDidOpen(({ document }) => {
+    const content = document.getText();
+    const syntaxTree = parser.parse(content);
+    connection.console.log(syntaxTree.rootNode.toString());
+});
+
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
 documents.onDidChangeContent(change => {
+	const content = change.document.getText();
+    const syntaxTree = parser.parse(content);
+    connection.console.log(syntaxTree.rootNode.toString());
 	validateTextDocument(change.document);
 });
 
