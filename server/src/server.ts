@@ -84,6 +84,11 @@ connection.onInitialized(() => {
 interface ExampleSettings {
 	maxNumberOfProblems: number;
 }
+/*class Tree {
+	constructor(parameters) {
+		
+	}
+}*/
 
 // The global settings, used when the `workspace/configuration` request is not supported by the client.
 // Please note that this is not the case when using this server with the client provided in this example
@@ -93,6 +98,7 @@ let globalSettings: ExampleSettings = defaultSettings;
 
 // Cache the settings of all open documents
 const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
+//const documentTrees: Map<string, Thenable<Tree>> = new Map();
 
 connection.onDidChangeConfiguration(change => {
 	if (hasConfigurationCapability) {
@@ -192,6 +198,7 @@ connection.onCompletion(
 		// The pass parameter contains the position of the text document in
 		// which code complete got requested. For the example we ignore this
 		// info and always provide the same completion items.
+		console.log("Autocomplete used");
 		return [
 			{
 				label: 'TypeScript',
