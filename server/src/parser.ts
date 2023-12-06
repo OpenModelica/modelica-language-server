@@ -1,5 +1,5 @@
-const Parser = require('tree-sitter');
-const Modelica = require('../../tree-sitter-modelica/build/Release/tree_sitter_modelica_binding');
+import Parser = require('tree-sitter');
+import Modelica = require('tree-sitter-modelica');
 
 export const parser = new Parser();
 parser.setLanguage(Modelica);

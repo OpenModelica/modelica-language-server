@@ -12,6 +12,8 @@
 		"url": "https://github.com/Microsoft/vscode-extension-samples"
 	},
 	"dependencies": {
+		"tree-sitter": "^0.20.6",
+		"tree-sitter-modelica": "file:../../tree-sitter-modelica",
 		"vscode-languageserver": "^8.1.0",
 		"vscode-languageserver-textdocument": "^1.0.8"
 	},
