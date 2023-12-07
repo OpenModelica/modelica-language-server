@@ -22,6 +22,7 @@ import {
 } from 'vscode-languageserver-textdocument';
 
 import { initializeParser } from './parser';
+import Parser = require('web-tree-sitter');
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -29,16 +30,18 @@ const connection = createConnection(ProposedFeatures.all);
 
 // Create a simple text document manager.
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
+let parser: Parser;
 
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
 
-connection.onInitialize((params: InitializeParams) => {
+connection.onInitialize(async (params: InitializeParams) => {
+  // Initialize parser
   connection.console.log('Modelica LSP: Initializing parser');
-  const parser = initializeParser();
-  
+  parser = await initializeParser();
   connection.console.log('Modelica LSP: Initializing parser done');
+
   const capabilities = params.capabilities;
 
   // Does the client support the `workspace/configuration` request?
@@ -99,7 +102,6 @@ let globalSettings: ExampleSettings = defaultSettings;
 
 // Cache the settings of all open documents
 const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
-//const documentTrees: Map<string, Thenable<Tree>> = new Map();
 
 connection.onDidChangeConfiguration(change => {
   if (hasConfigurationCapability) {
@@ -137,16 +139,16 @@ documents.onDidClose(e => {
 
 documents.onDidOpen(({ document }) => {
   const content = document.getText();
-  //const syntaxTree = parser.parse(content);
-  //connection.console.log(syntaxTree.rootNode.toString());
+  const syntaxTree = parser.parse(content);
+  connection.console.log(syntaxTree.rootNode.toString());
 });
 
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
 documents.onDidChangeContent(change => {
   const content = change.document.getText();
-  //const syntaxTree = parser.parse(content);
-  //connection.console.log(syntaxTree.rootNode.toString());
+  const syntaxTree = parser.parse(content);
+  connection.console.log(syntaxTree.rootNode.toString());
   validateTextDocument(change.document);
 });
 
