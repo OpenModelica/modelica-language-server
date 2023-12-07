@@ -1,0 +1,25 @@
+name: Test Modelica Language Server
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+
+      - name: Install the dependencies
+        run: npm clean-install && npm run postinstall
+
+      - name: Build package
+        run: npm run compile
+
+      - name: Test language server
+        run: npm run test:server

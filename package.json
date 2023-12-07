@@ -1,6 +1,6 @@
 {
   "name": "lsp-sample",
-  "description": "A language server example",
+  "description": "A language server Modelica",
   "author": "Microsoft Corporation",
   "license": "MIT",
   "version": "1.0.0",
@@ -25,13 +25,13 @@
       "type": "object",
       "title": "Example configuration",
       "properties": {
-        "languageServerExample.maxNumberOfProblems": {
+        "languageServerModelica.maxNumberOfProblems": {
           "scope": "resource",
           "type": "number",
           "default": 100,
           "description": "Controls the maximum number of problems produced by the server."
         },
-        "languageServerExample.trace.server": {
+        "languageServerModelica.trace.server": {
           "scope": "window",
           "type": "string",
           "enum": [
