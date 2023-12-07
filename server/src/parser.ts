@@ -1,17 +1,11 @@
-import Parser = require('tree-sitter');
-import Modelica = require('tree-sitter-modelica');
+import * as Parser from 'web-tree-sitter';
 
-export const parser = new Parser();
-parser.setLanguage(Modelica);
+export async function initializeParser(): Promise<Parser> {
+  await Parser.init();
+  const parser = new Parser;
 
-// Example Modelica code
-const sourceCode = 'model SimpleModel Real x; equation x = 1.0; end SimpleModel;';
+  const Modelica = await Parser.Language.load(`${__dirname}/../tree-sitter-modelica.wasm`);
+  parser.setLanguage(Modelica);
 
-// Show example
-console.log(parseSource(sourceCode));
-
-//Function that parses the source code
-function parseSource(src: string) {
-    const tree = parser.parse(src);
-    return tree.rootNode.toString();
+  return parser;
 }
