@@ -13,7 +13,8 @@
     "rootDir": "src"
   },
   "include": [
-    "src"
+    "src",
+    "src/util"
   ],
   "exclude": [
     "node_modules",
