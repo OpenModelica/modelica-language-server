@@ -1,8 +1,9 @@
 /* --------------------------------------------------------------------------------------------
- * Copyright (c) 2018 Mads Hartmann, Andreas Heuermann
+ * Copyright (c) 2018 Mads Hartmann
+ * Copyright (C) 2023 Andreas Heuermann, Osman Karabel
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * Taken from bash-language-server and adapted to Modelica language server
- * https://github.com/bash-lsp/bash-language-server/blob/main/server/src/util/logger.ts
+ * https://github.com/bash-lsp/bash-language-server/blob/main/server/src/parser.ts
  * ------------------------------------------------------------------------------------------ */
 
 import * as LSP from 'vscode-languageserver';

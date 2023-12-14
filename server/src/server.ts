@@ -1,6 +1,9 @@
 /* --------------------------------------------------------------------------------------------
- * Copyright (c) 2023 Andreas Heuermann, Osman Karabel
+ * Copyright (c) 2018 Mads Hartmann
+ * Copyright (C) 2023 Andreas Heuermann, Osman Karabel
  * Licensed under the MIT License. See License.txt in the project root for license information.
+ * Taken from bash-language-server and adapted to Modelica language server
+ * https://github.com/bash-lsp/bash-language-server/blob/main/server/src/server.ts
  * ------------------------------------------------------------------------------------------ */
 
 import * as LSP from 'vscode-languageserver/node';
@@ -57,7 +60,7 @@ export class ModelicaServer {
       completionProvider: undefined,
       hoverProvider: false,
       signatureHelpProvider: undefined,
-      documentSymbolProvider: false,
+      documentSymbolProvider: true,
       colorProvider: false,
       semanticTokensProvider: undefined
     };
@@ -71,6 +74,8 @@ export class ModelicaServer {
     // Make the text document manager listen on the connection
     // for open, change and close text document events
     this.documents.listen(this.connection);
+
+    connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
 
     connection.onInitialized(async () => {
       initialized = true;
@@ -99,6 +104,14 @@ export class ModelicaServer {
 
   private async analyzeDocument(document: TextDocument) {
     const diagnostics = this.analyzer.analyze(document);
+  }
+
+  private onDocumentSymbol(params: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
+    // TODO: ideally this should return LSP.DocumentSymbol[] instead of LSP.SymbolInformation[]
+    // which is a hierarchy of symbols.
+    // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
+    logger.debug(`onDocumentSymbol`);
+    return this.analyzer.getDeclarationsForUri({ uri: params.textDocument.uri });
   }
 
 }
