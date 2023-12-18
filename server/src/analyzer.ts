@@ -9,7 +9,6 @@
 import * as LSP from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-import { Query } from 'web-tree-sitter';
 import Parser = require('web-tree-sitter');
 
 import {

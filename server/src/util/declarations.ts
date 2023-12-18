@@ -57,7 +57,7 @@ export function nodeToSymbolInformation(node: Parser.SyntaxNode, uri: string): L
   }
 
   const name = TreeSitterUtil.getIdentifier(node);
-  if (name === null || isEmpty(name)) {
+  if (name === undefined || isEmpty(name)) {
     return null;
   }
 

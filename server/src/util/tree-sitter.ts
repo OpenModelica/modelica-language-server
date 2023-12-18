@@ -24,6 +24,50 @@ export function forEach(node: SyntaxNode, callback: (n: SyntaxNode) => void | bo
   }
 }
 
+/**
+ * Find first node where callback returns true.
+ *
+ * Traverse tree depth first, left to right.
+ *
+ * @param start     The node to start iterating from
+ * @param callback  Callback returning true if node is searched node.
+ */
+export function findFirst(start: SyntaxNode, callback: (n: SyntaxNode) => boolean): SyntaxNode | null {
+
+  const cursor = start.walk();
+  let reachedRoot = false;
+  let retracing = false;
+
+  while (!reachedRoot) {
+    const node = cursor.currentNode();
+    if (callback(node) === true ) {
+      return node;
+    }
+
+    if (cursor.gotoFirstChild()) {
+      continue;
+    }
+
+    if (cursor.gotoNextSibling()) {
+      continue;
+    }
+
+    retracing = true;
+    while (retracing) {
+        if (!cursor.gotoParent()) {
+            retracing = false;
+            reachedRoot = true;
+        }
+
+        if (cursor.gotoNextSibling()) {
+        retracing = false;
+        }
+    }
+  }
+
+  return null;
+}
+
 export function range(n: SyntaxNode): LSP.Range {
   return LSP.Range.create(
     n.startPosition.row,
@@ -63,29 +107,14 @@ export function findParent(
 }
 
 /**
- * Get identifier from `class_definition` node.
+ * Get identifier from node.
  *
- * @param n   Syntax tree node.
+ * @param start   Syntax tree node.
  */
-export function getIdentifier(start: SyntaxNode): string | null {
+export function getIdentifier(start: SyntaxNode): string | undefined {
 
-  let found: boolean = false;
-  let identifier: string;
-
-  forEach(start, (n) => {
-    if (n.type == 'IDENT') {
-      identifier = n.text;
-      found = true;
-      return false;
-    }
-    return true;
-  });
-
-  if (found) {
-    return identifier!;
-  } else {
-    return null;
-  }
+  const node = findFirst(start, (n: SyntaxNode) => n.type == 'IDENT');
+  return node?.text;
 }
 
 /**

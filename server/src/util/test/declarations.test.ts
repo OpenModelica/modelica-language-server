@@ -26,7 +26,7 @@ describe('nodeToSymbolInformation', () => {
   const symbol = nodeToSymbolInformation(classNode, "file.mo");
 
   assert.equal(symbol?.name, 'Temperature');
-  assert.equal(symbol?.kind, 'LSP.SymbolKind.TypeParameter');
+  assert.equal(symbol?.kind, LSP.SymbolKind.TypeParameter);
   });
 });
 
