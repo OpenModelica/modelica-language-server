@@ -9,11 +9,13 @@
 import * as LSP from 'vscode-languageserver/node';
 import { SyntaxNode } from 'web-tree-sitter';
 
+import { logger } from './logger';
+
 /**
  * Recursively iterate over all nodes in a tree.
  *
- * @param node The node to start iterating from
- * @param callback The callback to call for each node. Return false to stop following children.
+ * @param node      The node to start iterating from
+ * @param callback  The callback to call for each node. Return false to stop following children.
  */
 export function forEach(node: SyntaxNode, callback: (n: SyntaxNode) => void | boolean) {
   const followChildren = callback(node) !== false;
@@ -31,20 +33,15 @@ export function range(n: SyntaxNode): LSP.Range {
   );
 }
 
+/**
+ * Tell if a node is a definition.
+ *
+ * @param n Node of tree
+ * @returns `true` if node is a definition, `false` otherwise.
+ */
 export function isDefinition(n: SyntaxNode): boolean {
   switch (n.type) {
     case 'class_definition':
-    ///case 'function_definition':
-      return true;
-    default:
-      return false;
-  }
-}
-
-export function isReference(n: SyntaxNode): boolean {
-  switch (n.type) {
-    case 'variable_name':
-    case 'command_name':
       return true;
     default:
       return false;
@@ -63,4 +60,50 @@ export function findParent(
     node = node.parent;
   }
   return null;
+}
+
+/**
+ * Get identifier from `class_definition` node.
+ *
+ * @param n   Syntax tree node.
+ */
+export function getIdentifier(start: SyntaxNode): string | null {
+
+  let found: boolean = false;
+  let identifier: string;
+
+  forEach(start, (n) => {
+    if (n.type == 'IDENT') {
+      identifier = n.text;
+      found = true;
+      return false;
+    }
+    return true;
+  });
+
+  if (found) {
+    return identifier!;
+  } else {
+    return null;
+  }
+}
+
+/**
+ * Get class prefixes from `class_definition` node.
+ *
+ * @param node  Class definition node.
+ * @returns     String with class prefixes or `null` if no `class_prefixes` can be found.
+ */
+export function getClassPrefixes(node: SyntaxNode): string | null {
+
+  if (node.type !== 'class_definition') {
+    return null;
+  }
+
+  const classPrefixNode = node.childForFieldName('classPrefixes');
+  if (classPrefixNode == null || classPrefixNode.type !== 'class_prefixes') {
+    return null;
+  }
+
+  return classPrefixNode.text;
 }

@@ -42,7 +42,7 @@ export default class Analyzer {
     logger.debug(tree.rootNode.toString());
 
     // Get declarations
-    const declarations = getAllDeclarationsInTree({ tree, uri });
+    const declarations = getAllDeclarationsInTree(tree, uri);
 
     // Update saved analysis for document uri
     this.uriToAnalyzedDocument[uri] = {
@@ -59,13 +59,13 @@ export default class Analyzer {
    *
    * TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found in a given text document.
    */
-  public getDeclarationsForUri({ uri }: { uri: string }): LSP.SymbolInformation[] {
+  public getDeclarationsForUri(uri: string): LSP.SymbolInformation[] {
     const tree = this.uriToAnalyzedDocument[uri]?.tree;
 
     if (!tree?.rootNode) {
       return [];
     }
 
-    return getAllDeclarationsInTree({ uri, tree });
+    return getAllDeclarationsInTree(tree, uri);
   }
 }

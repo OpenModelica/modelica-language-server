@@ -106,12 +106,18 @@ export class ModelicaServer {
     const diagnostics = this.analyzer.analyze(document);
   }
 
+  /**
+   * Provide symbols defined in document.
+   *
+   * @param params  Unused.
+   * @returns       Symbol information.
+   */
   private onDocumentSymbol(params: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
     // TODO: ideally this should return LSP.DocumentSymbol[] instead of LSP.SymbolInformation[]
     // which is a hierarchy of symbols.
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
     logger.debug(`onDocumentSymbol`);
-    return this.analyzer.getDeclarationsForUri({ uri: params.textDocument.uri });
+    return this.analyzer.getDeclarationsForUri(params.textDocument.uri);
   }
 
 }

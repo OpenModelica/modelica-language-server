@@ -52,7 +52,7 @@
     "lint": "eslint ./client/src ./server/src --ext .ts,.tsx",
     "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
     "test": "sh ./scripts/e2e.sh",
-    "test:server": "cd server && npx mocha -r ts-node/register src/test/**/*.test.ts"
+    "test:server": "cd server && npx mocha -r ts-node/register src/test/**/*.test.ts src/util/test/**/*.test.ts"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",
