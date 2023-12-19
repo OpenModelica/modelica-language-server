@@ -1,4 +1,5 @@
-out
-node_modules
-client/server
 .vscode-test
+client/server
+language-server-modelica*.vsix
+node_modules
+out

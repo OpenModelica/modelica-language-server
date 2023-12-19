@@ -36,3 +36,13 @@ It also includes an End-to-End test.
   - In the [Extension Development Host](https://code.visualstudio.com/api/get-started/your-first-extension#:~:text=Then%2C%20inside%20the%20editor%2C%20press%20F5.%20This%20will%20compile%20and%20run%20the%20extension%20in%20a%20new%20Extension%20Development%20Host%20window.)
     instance of VSCode, open a document in 'modelica' language mode.
     - Check the console output of `Language Server Modelica` to see the parsed tree of the opened file.
+
+## Build and Install Extension
+
+```
+npx vsce package
+```
+
+## License
+
+See [License.md](./LICENSE.md).
