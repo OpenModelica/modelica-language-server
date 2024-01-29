@@ -1,10 +1,10 @@
 {
-  "name": "language-server-modelica",
-  "displayName": "[Experimental] Language Server Modelica",
-  "description": "[Experimental] A Modelica language server",
-  "version": "0.1.0",
+  "name": "modelica-language-server",
+  "displayName": "Modelica Language Server",
+  "description": "[Experimental] Modelica language server",
+  "version": "0.1.1",
   "author": "Andreas Heuermann, Osman Karabel",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
     "url": "https://github.com/AnHeuermann/modelica-language-server"
@@ -18,6 +18,9 @@
     "language",
     "language-server"
   ],
+  "homepage": "https://github.com/AnHeuermann/modelica-language-server",
+  "icon": "images/Modelica_Language_marging.jpg",
+  "bugs": "https://github.com/AnHeuermann/modelica-language-server/issues",
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -26,29 +29,18 @@
   ],
   "main": "./client/out/extension",
   "contributes": {
-    "configuration": {
-      "type": "object",
-      "title": "Example configuration",
-      "properties": {
-        "languageServerModelica.maxNumberOfProblems": {
-          "scope": "resource",
-          "type": "number",
-          "default": 100,
-          "description": "Controls the maximum number of problems produced by the server."
-        },
-        "languageServerModelica.trace.server": {
-          "scope": "window",
-          "type": "string",
-          "enum": [
-            "off",
-            "messages",
-            "verbose"
-          ],
-          "default": "off",
-          "description": "Traces the communication between VS Code and the language server."
-        }
+    "languages": [
+      {
+        "id": "modelica",
+        "aliases": [
+          "Modelica",
+          "modelica"
+        ],
+        "extensions": [
+          ".mo"
+        ]
       }
-    }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

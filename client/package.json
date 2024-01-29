@@ -1,13 +1,13 @@
 {
-  "name": "lsp-sample-client",
+  "name": "modelica-language-server-client",
   "description": "VSCode part of a language server",
-  "author": "Microsoft Corporation",
-  "license": "MIT",
+  "author": "Andreas Heuermann",
+  "license": "AGPL-3.0-or-later",
   "version": "0.0.1",
   "publisher": "vscode",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Microsoft/vscode-extension-samples"
+    "url": "https://github.com/AnHeuermann/modelica-language-server"
   },
   "engines": {
     "vscode": "^1.75.0",
