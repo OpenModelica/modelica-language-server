@@ -25,10 +25,10 @@ jobs:
 
       - name: Install X server
         run: |
-          apt-get update
-          apt-get install -y xvfb
-          apt-get -y install xorg xvfb gtk2-engines-pixbuf
-          apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-cyrillic xfonts-scalable
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sudo apt-get -y install xorg xvfb gtk2-engines-pixbuf
+          sudo apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-cyrillic xfonts-scalable
 
       - name: Install the dependencies
         run: npm clean-install && npm run postinstall
