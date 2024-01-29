@@ -23,6 +23,11 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org/
 
+      - name: Install X server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
       - name: Install the dependencies
         run: npm clean-install && npm run postinstall
 
@@ -32,14 +37,20 @@ jobs:
       - name: Test language server
         run: npm run test:server
 
+      - name: Test language server client
+        run: |
+          Xvfb -ac :99 -screen 0 1280x1024x16 &
+          export DISPLAY=:99
+          npm run test
+
       - name: Package Extension
         run: npx vsce package
 
       - name: Archive vsix package
         uses: actions/upload-artifact@v4
         with:
-          name: language-server-modelica.vsix
-          path: language-server-modelica-*.vsix
+          name: modelica-language-server.vsix
+          path: modelica-language-server-*.vsix
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -50,13 +61,13 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: language-server-modelica.vsix
+          name: modelica-language-server.vsix
 
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            language-server-modelica-*.vsix
+            modelica-language-server-*.vsix
           fail_on_unmatched_files: true
           generate_release_notes: true
           append_body: true

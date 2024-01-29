@@ -16,26 +16,33 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+
 import * as path from 'path';
+import { TextDocument } from 'vscode';
 
-import { runTests } from '@vscode/test-electron';
+type LanguageTypes = 'modelica' | 'metamodelica' | 'unknown'
 
-async function main() {
-  try {
-    // The folder containing the Extension Manifest package.json
-    // Passed to `--extensionDevelopmentPath`
-    const extensionDevelopmentPath = path.resolve(__dirname, '../../../');
-
-    // The path to test runner
-    // Passed to --extensionTestsPath
-    const extensionTestsPath = path.resolve(__dirname, './index');
-
-    // Download VS Code, unzip it and run the integration test
-    await runTests({ extensionDevelopmentPath, extensionTestsPath });
-  } catch (err) {
-    console.error('Failed to run tests');
-    process.exit(1);
-  }
+export function getFileExtension(document: TextDocument): string | undefined {
+  const uri = document.uri;
+  const filePath = uri.fsPath;
+  return path.extname(filePath);
 }
 
-main();
+function hasMetaModelicaKeywords(content: string): boolean {
+  const unionRegex = new RegExp('\\b(uniontype)\\s+(\\w+)\\s*(".*")*');
+
+  return unionRegex.test(content);
+}
+
+/**
+ * Check if the text document is a Modelica files, MetaModelica file or other.
+ * @param document Text document.
+ */
+export function getLanguage(document: TextDocument): LanguageTypes {
+  // Check
+  if (hasMetaModelicaKeywords(document.getText())) {
+    return 'metamodelica';
+  }
+
+  return 'modelica';
+}

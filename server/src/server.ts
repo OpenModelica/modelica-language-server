@@ -1,10 +1,26 @@
-/* --------------------------------------------------------------------------------------------
- * Copyright (c) 2018 Mads Hartmann
- * Copyright (C) 2023 Andreas Heuermann, Osman Karabel
- * Licensed under the MIT License. See License.txt in the project root for license information.
+/*
+ * This file is part of modelica-language-server.
+ *
+ * modelica-language-server is free software: you can redistribute it and/or
+ * modify it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
+ *
+ * modelica-language-server is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with modelica-language-server. If not, see
+ * <http://www.gnu.org/licenses/>.
+ */
+
+/* -----------------------------------------------------------------------------
  * Taken from bash-language-server and adapted to Modelica language server
  * https://github.com/bash-lsp/bash-language-server/blob/main/server/src/server.ts
- * ------------------------------------------------------------------------------------------ */
+ * -----------------------------------------------------------------------------
+ */
 
 import * as LSP from 'vscode-languageserver/node';
 import { TextDocument} from 'vscode-languageserver-textdocument';

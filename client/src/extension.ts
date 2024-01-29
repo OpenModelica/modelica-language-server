@@ -1,21 +1,58 @@
-/* --------------------------------------------------------------------------------------------
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for license information.
- * ------------------------------------------------------------------------------------------ */
+/*
+ * This file is part of modelica-language-server.
+ *
+ * modelica-language-server is free software: you can redistribute it and/or
+ * modify it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
+ *
+ * modelica-language-server is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with modelica-language-server. If not, see
+ * <http://www.gnu.org/licenses/>.
+ */
 
 import * as path from 'path';
-import { workspace, ExtensionContext } from 'vscode';
-
+import { languages, workspace, ExtensionContext, TextDocument } from 'vscode';
 import {
   LanguageClient,
   LanguageClientOptions,
   ServerOptions,
   TransportKind
 } from 'vscode-languageclient/node';
+import { getFileExtension, getLanguage } from './getLanguage';
 
 let client: LanguageClient;
 
 export function activate(context: ExtensionContext) {
+  // Register event listener to set language for '.mo' files.
+  const checkedFiles: { [id: string]: boolean} = {};
+  workspace.onDidOpenTextDocument((document: TextDocument) => {
+    if (checkedFiles[document.fileName]) {
+      return;
+    }
+
+    checkedFiles[document.fileName] = true;
+    if (getFileExtension(document) == '.mo') {
+      const lang = getLanguage(document);
+
+      switch (lang) {
+        case 'modelica':
+          languages.setTextDocumentLanguage(document, 'modelica');
+          break;
+        case 'metamodelica':
+          languages.setTextDocumentLanguage(document, 'metamodelica');
+          break;
+        default:
+          break;
+      }
+    }
+  });
+
   // The server is implemented in node
   const serverModule = context.asAbsolutePath(
     path.join('server', 'out', 'server.js')
@@ -33,8 +70,13 @@ export function activate(context: ExtensionContext) {
 
   // Options to control the language client
   const clientOptions: LanguageClientOptions = {
-    // Register the server for plain text documents
-    documentSelector: [{ scheme: 'file', language: 'modelica' }],
+    // Register the server for modelica text documents
+    documentSelector: [
+      {
+        language: 'modelica',
+        scheme: 'file'
+      }
+    ],
     synchronize: {
       // Notify the server about file changes to '.clientrc files contained in the workspace
       fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
@@ -43,8 +85,8 @@ export function activate(context: ExtensionContext) {
 
   // Create the language client and start the client.
   client = new LanguageClient(
-    'languageServerModelica',
-    'Language Server Modelica',
+    'modelicaLanguageServer',
+    'Modelica Language Server',
     serverOptions,
     clientOptions
   );

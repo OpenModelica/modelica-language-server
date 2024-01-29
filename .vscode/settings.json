@@ -4,8 +4,5 @@
   "typescript.preferences.quoteStyle": "single",
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"
-  },
-  "cSpell.words": [
-    "Karabel"
-  ]
+  }
 }
