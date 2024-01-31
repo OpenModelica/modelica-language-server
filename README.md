@@ -37,8 +37,8 @@ Check the Marketplace for
 
 ## Building the Language Server
 
-  - Run `npm install` in this folder. This installs all necessary npm modules in
-    both the client and server folder
+  - Run `npm install` and `npm run postinstall` in this folder.This installs all
+    necessary npm modules in both the client and server folder
   - Open VS Code on this folder.
   - Press Ctrl+Shift+B to start compiling the client and server in [watch
     mode](https://code.visualstudio.com/docs/editor/tasks#:~:text=The%20first%20entry%20executes,the%20HelloWorld.js%20file.).
@@ -59,10 +59,8 @@ npx vsce package
 
 ## License
 
-Copyright (C) 2023-2024 Andreas Heuermann, Osman Karabel
-
 modelica-language-server is licensed under the
-GNU Affero General Public License v3, see [COPYING.md](./COPYING.md).
+GNU Affero General Public License v3, see [LICENSE.md](./LICENSE.md).
 
 ### 3rd Party Licenses
 
@@ -71,8 +69,8 @@ This extension is based on
 licensed under MIT license.
 
 Some parts of the source code are taken from
-[bash-language-server](https://github.com/bash-lsp/bash-language-server),
-licensed under the MIT license, and adapted to the Modelica language server.
+[bash-lsp/bash-language-server](https://github.com/bash-lsp/bash-language-server),
+licensed under the MIT license and adapted to the Modelica language server.
 
 [OpenModelica/tree-sitter-modelica](https://github.com/OpenModelica/tree-sitter-modelica)
 v0.2.0 is included in this extension and is licensed under the [OSMC-PL

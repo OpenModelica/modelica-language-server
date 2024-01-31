@@ -17,6 +17,7 @@
  */
 
 import * as path from 'path';
+import * as fs from 'fs';
 import { languages, workspace, ExtensionContext, TextDocument } from 'vscode';
 import {
   LanguageClient,
@@ -25,6 +26,7 @@ import {
   TransportKind
 } from 'vscode-languageclient/node';
 import { getFileExtension, getLanguage } from './getLanguage';
+import { fstat } from 'fs';
 
 let client: LanguageClient;
 
@@ -53,10 +55,13 @@ export function activate(context: ExtensionContext) {
     }
   });
 
-  // The server is implemented in node
+  // The server is implemented in node, point to packed module
   const serverModule = context.asAbsolutePath(
-    path.join('server', 'out', 'server.js')
+    path.join('out', 'server.js')
   );
+  if (!fs.existsSync(serverModule)) {
+    throw new Error(`Can't find server module in ${serverModule}`);
+  }
 
   // If the extension is launched in debug mode then the debug server options are used
   // Otherwise the run options are used

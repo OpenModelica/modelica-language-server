@@ -4,19 +4,19 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Launch Client",
       "type": "extensionHost",
       "request": "launch",
-      "name": "Launch Client",
       "runtimeExecutable": "${execPath}",
       "args": [
         "--extensionDevelopmentPath=${workspaceRoot}"
       ],
       "outFiles": [
-        "${workspaceRoot}/client/out/**/*.js"
+        "${workspaceRoot}/out/**/*.js"
       ],
       "preLaunchTask": {
         "type": "npm",
-        "script": "watch"
+        "script": "esbuild-watch"
       }
     },
     {
@@ -31,7 +31,11 @@
       ],
       "outFiles": [
         "${workspaceRoot}/client/out/test/**/*.js"
-      ]
+      ],
+      "preLaunchTask": {
+        "type": "npm",
+        "script": "test-compile"
+      }
     }
   ]
 }

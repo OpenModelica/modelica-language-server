@@ -32,7 +32,7 @@ jobs:
         run: npm clean-install && npm run postinstall
 
       - name: Build package
-        run: npm run compile
+        run: npm run esbuild
 
       - name: Test language server
         run: npm run test:server

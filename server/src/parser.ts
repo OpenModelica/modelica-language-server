@@ -22,7 +22,9 @@
  * -----------------------------------------------------------------------------
  */
 
-import * as Parser from 'web-tree-sitter';
+import Parser from 'web-tree-sitter';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Initialize tree-sitter parser and load Modelica language.
@@ -33,7 +35,12 @@ export async function initializeParser(): Promise<Parser> {
   await Parser.init();
   const parser = new Parser;
 
-  const Modelica = await Parser.Language.load(`${__dirname}/../tree-sitter-modelica.wasm`);
+  const modelicaWasmFile = path.join(__dirname, 'tree-sitter-modelica.wasm');
+  if (!fs.existsSync(modelicaWasmFile)) {
+    throw new Error(`Can't find 'tree-sitter-modelica.wasm' at ${modelicaWasmFile}`);
+  }
+
+  const Modelica = await Parser.Language.load(modelicaWasmFile);
   parser.setLanguage(Modelica);
 
   return parser;
