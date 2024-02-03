@@ -1,0 +1,4 @@
+.vscode-test
+modelica-language-server*.vsix
+node_modules/
+out/

@@ -1,0 +1,16 @@
+!server/OSMC-License.txt
+.eslintignore
+.github
+.gitignore
+.travis.yml
+.vscode/**
+**/*.map
+**/*.ts
+**/tsconfig.base.json
+**/tsconfig.json
+client/
+contributing.md
+esbuild.config.js
+node_modules/
+scripts/
+server/

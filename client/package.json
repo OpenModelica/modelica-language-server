@@ -1,0 +1,23 @@
+{
+  "name": "modelica-language-server-client",
+  "description": "VSCode part of a language server",
+  "author": "Andreas Heuermann",
+  "license": "OSMC-PL-1-8",
+  "version": "0.1.0",
+  "publisher": "vscode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenModelica/modelica-language-server"
+  },
+  "engines": {
+    "vscode": "^1.75.0",
+    "node": "20"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.1",
+    "@vscode/test-electron": "^2.3.8"
+  }
+}

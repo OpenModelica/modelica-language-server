@@ -1,0 +1,68 @@
+{
+  "name": "modelica-language-server",
+  "displayName": "Modelica Language Server",
+  "description": "[Experimental] Modelica language server",
+  "version": "0.1.0",
+  "author": "Andreas Heuermann, Osman Karabel",
+  "license": "OSMC-PL-1-8",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenModelica/modelica-language-server"
+  },
+  "publisher": "OpenModelica",
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "modelica",
+    "language",
+    "language-server"
+  ],
+  "homepage": "https://github.com/OpenModelica/modelica-language-server",
+  "icon": "images/Modelica_Language_marging.jpg",
+  "bugs": "https://github.com/OpenModelica/modelica-language-server/issues",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "activationEvents": [
+    "onLanguage:modelica"
+  ],
+  "main": "./out/client",
+  "contributes": {
+    "languages": [
+      {
+        "id": "modelica",
+        "aliases": [
+          "Modelica",
+          "modelica"
+        ],
+        "extensions": [
+          ".mo"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run esbuild-base -- --minify",
+    "esbuild-base": "node esbuild.config.js",
+    "esbuild": "npm run esbuild-base -- --sourcemap",
+    "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch",
+    "test-compile": "tsc -b ./",
+    "lint": "eslint ./client/src ./server/src --ext .ts,.tsx",
+    "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
+    "test": "npm run test-compile && sh ./scripts/e2e.sh",
+    "test:server": "cd server && npx mocha -r ts-node/register src/test/**/*.test.ts src/util/test/**/*.test.ts",
+    "all": "npm run postinstall && npm run esbuild && npm run lint && npm run test:server && npm run test && npm run vscode:prepublish"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.10.4",
+    "@typescript-eslint/eslint-plugin": "^6.13.2",
+    "@typescript-eslint/parser": "^6.13.2",
+    "esbuild": "^0.20.0",
+    "eslint": "^8.55.0",
+    "mocha": "^10.2.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.3.3"
+  }
+}
