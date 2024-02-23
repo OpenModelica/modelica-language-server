@@ -36,15 +36,17 @@
 /* -----------------------------------------------------------------------------
  * Taken from bash-language-server and adapted to Modelica language server
  * https://github.com/bash-lsp/bash-language-server/blob/main/server/src/server.ts
- * -----------------------------------------------------------------------------
+ * ----------------------------------------------------------------------------
  */
 
+import * as path from 'node:path';
 import * as LSP from 'vscode-languageserver/node';
 import { TextDocument} from 'vscode-languageserver-textdocument';
 
 import { initializeParser } from './parser';
 import Analyzer from './analyzer';
 import { logger, setLogConnection, setLogLevel } from './util/logger';
+import { uniqueBasedOnHash } from './util/array';
 
 /**
  * ModelicaServer collection all the important bits and bobs.
@@ -57,11 +59,11 @@ export class ModelicaServer {
 
   private constructor(
     analyzer: Analyzer,
-    clientCapabilities: LSP.ClientCapabilities,
+    capabilities: LSP.ClientCapabilities,
     connection: LSP.Connection
   ) {
     this.analyzer = analyzer;
-    this.clientCapabilities = clientCapabilities;
+    this.clientCapabilities = capabilities;
     this.connection = connection;
   }
 
@@ -91,7 +93,7 @@ export class ModelicaServer {
     return {
       textDocumentSync: LSP.TextDocumentSyncKind.Full,
       completionProvider: undefined,
-      hoverProvider: false,
+      hoverProvider: true,
       signatureHelpProvider: undefined,
       documentSymbolProvider: true,
       colorProvider: false,
@@ -99,26 +101,19 @@ export class ModelicaServer {
     };
   }
 
+  /**
+   * Register handlers for the events from the Language Server Protocol
+   * 
+   * @param connection 
+   */
   public register(connection: LSP.Connection): void {
-
     let currentDocument: TextDocument | null = null;
     let initialized = false;
 
     // Make the text document manager listen on the connection
     // for open, change and close text document events
     this.documents.listen(this.connection);
-
-    connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
-
-    connection.onInitialized(async () => {
-      initialized = true;
-      if (currentDocument) {
-        // If we already have a document, analyze it now that we're initialized
-        // and the linter is ready.
-        this.analyzeDocument(currentDocument);
-      }
-    });
-
+    
     // The content of a text document has changed. This event is emitted
     // when the text document first opened or when its content has changed.
     this.documents.onDidChangeContent(({ document }) => {
@@ -132,12 +127,74 @@ export class ModelicaServer {
         this.analyzeDocument(document);
       }
     });
+
+    connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
+    connection.onHover(this.onHover.bind(this));
+    logger.debug('Event Handlers Registered');
+
+    connection.onInitialized(async () => {
+      initialized = true;
+      if (currentDocument) {
+        // If we already have a document, analyze it now that we're initialized
+        // and the linter is ready.
+        this.analyzeDocument(currentDocument);
+      }
+    });
   }
 
 
   private async analyzeDocument(document: TextDocument) {
-    const diagnostics = this.analyzer.analyze(document);
+    const diagnostics = this.analyzer.analyze({document});
   }
+
+  private logRequest({
+    request,
+    params,
+    word,
+  }: {
+    request: string
+    params: LSP.ReferenceParams | LSP.TextDocumentPositionParams
+    word?: string | null
+  }) {
+    const wordLog = word ? `"${word}"` : 'null'
+    logger.debug(
+      `${request} ${params.position.line}:${params.position.character} word=${wordLog}`,
+    )
+  }
+
+// getDocumentationForSymbol aus dem Bash LSP
+  private getDocumentationForSymbol({
+    currentUri,
+    symbol,
+  }: {
+    symbol: LSP.SymbolInformation
+    currentUri: string
+  }): LSP.MarkupContent {
+    logger.debug(
+      `getDocumentationForSymbol: symbol=${symbol.name} uri=${symbol.location.uri}`,
+    )
+    const symbolUri = symbol.location.uri
+    const symbolStartLine = symbol.location.range.start.line
+
+    const commentAboveSymbol = this.analyzer.commentsAbove(symbolUri, symbolStartLine)
+    const symbolDocumentation = commentAboveSymbol ? `\n\n${commentAboveSymbol}` : ''
+    const hoverHeader = `${symbolKindToDescription(symbol.kind)}: **${symbol.name}**`
+    const symbolLocation =
+      symbolUri !== currentUri
+        ? `in ${path.relative(path.dirname(currentUri), symbolUri)}`
+        : `on line ${symbolStartLine + 1}`
+
+    // TODO: An improvement could be to add show the symbol definition in the hover instead
+    // of the defined location – similar to how VSCode works for languages like TypeScript.
+
+    return getMarkdownContent(
+      `${hoverHeader} - *defined ${symbolLocation}*${symbolDocumentation}`,
+    )
+  }
+
+  // ==============================
+  // Language server event handlers
+  // ==============================
 
   /**
    * Provide symbols defined in document.
@@ -153,6 +210,111 @@ export class ModelicaServer {
     return this.analyzer.getDeclarationsForUri(params.textDocument.uri);
   }
 
+  private async onHover(
+    params: LSP.TextDocumentPositionParams,
+  ): Promise<LSP.Hover | null> {
+    const word = this.analyzer.wordAtPointFromTextPosition(params)
+    const currentUri = params.textDocument.uri
+    logger.debug('------------');
+    this.logRequest({ request: 'onHover init', params, word })
+
+    if (!word) {
+      return null
+    }
+
+    const symbolsMatchingWord = this.analyzer.findDeclarationsMatchingWord({
+      exactMatch: true,
+      uri: currentUri,
+      word,
+      position: params.position,
+    })
+    logger.debug('symbolsMatchingWord: ', symbolsMatchingWord);
+
+    const symbolDocumentation = deduplicateSymbols({
+      symbols: symbolsMatchingWord,
+      currentUri,
+    })
+      // do not return hover referencing for the current line
+      .filter(
+        (symbol) =>
+          symbol.location.uri !== currentUri ||
+          symbol.location.range.start.line !== params.position.line,
+      )
+      .map((symbol: LSP.SymbolInformation) =>
+        this.getDocumentationForSymbol({ currentUri, symbol }),
+      )
+
+    if (symbolDocumentation.length === 1) {
+      logger.debug('Symbol Documentation: ', symbolDocumentation[0]);
+      return { contents: symbolDocumentation[0] }
+    }
+    return null
+  }
+}
+
+/*
+return { contents: { kind: LSP.MarkupKind.Markdown, value: [
+  '# Test',
+  'Text text text',
+  '```modelica code```'].join('\n')
+  }
+}
+*/
+/**
+ * Deduplicate symbols by prioritizing the current file.
+ */
+function deduplicateSymbols({
+  symbols,
+  currentUri,
+}: {
+  symbols: LSP.SymbolInformation[]
+  currentUri: string
+}) {
+  const isCurrentFile = ({ location: { uri } }: LSP.SymbolInformation) =>
+    uri === currentUri
+
+  const getSymbolId = ({ name, kind }: LSP.SymbolInformation) => `${name}${kind}`
+
+  const symbolsCurrentFile = symbols.filter((s) => isCurrentFile(s))
+
+  const symbolsOtherFiles = symbols
+    .filter((s) => !isCurrentFile(s))
+    // Remove identical symbols matching current file
+    .filter(
+      (symbolOtherFiles) =>
+        !symbolsCurrentFile.some(
+          (symbolCurrentFile) =>
+            getSymbolId(symbolCurrentFile) === getSymbolId(symbolOtherFiles),
+        ),
+    )
+
+  // NOTE: it might be that uniqueBasedOnHash is not needed anymore
+  return uniqueBasedOnHash([...symbolsCurrentFile, ...symbolsOtherFiles], getSymbolId)
+}
+
+function symbolKindToDescription(kind: LSP.SymbolKind): string {
+  switch (kind) {
+    case LSP.SymbolKind.Class:
+      return 'Class';
+    case LSP.SymbolKind.Function:
+      return 'Function';
+    case LSP.SymbolKind.Package:
+      return 'Package';
+    case LSP.SymbolKind.TypeParameter:
+      return 'Type';
+    default:
+      return 'Modelica symbol';
+  }
+}
+
+function getMarkdownContent(documentation: string, language?: string): LSP.MarkupContent {
+  return {
+    value: language
+      ? // eslint-disable-next-line prefer-template
+        ['``` ' + language, documentation, '```'].join('\n')
+      : documentation,
+    kind: LSP.MarkupKind.Markdown,
+  }
 }
 
 // Create a connection for the server, using Node's IPC as a transport.

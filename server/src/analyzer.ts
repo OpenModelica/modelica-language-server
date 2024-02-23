@@ -41,13 +41,15 @@
 
 import * as LSP from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-
+import * as fs from 'fs';
 import Parser = require('web-tree-sitter');
 
 import {
+  getLocalDeclarations,
   getAllDeclarationsInTree
 } from './util/declarations';
 import { logger } from './util/logger';
+import { log } from 'console';
 
 type AnalyzedDocument = {
   document: TextDocument,
@@ -59,11 +61,12 @@ export default class Analyzer {
   private parser: Parser;
   private uriToAnalyzedDocument: Record<string, AnalyzedDocument | undefined> = {};
 
-  constructor (parser: Parser) {
+  constructor(parser:Parser)
+  {
     this.parser = parser;
-  }
+  }  
 
-  public analyze(document: TextDocument): LSP.Diagnostic[] {
+  public analyze({document}: {document: TextDocument}): LSP.Diagnostic[] {
     logger.debug('analyze:');
 
     const diagnostics: LSP.Diagnostic[] = [];
@@ -80,7 +83,7 @@ export default class Analyzer {
     this.uriToAnalyzedDocument[uri] = {
       document,
       declarations,
-      tree
+      tree,
     };
 
     return diagnostics;
@@ -99,5 +102,221 @@ export default class Analyzer {
     }
 
     return getAllDeclarationsInTree(tree, uri);
+  }
+
+  /**
+   * Find declarations for the given word and position.
+   */
+  public findDeclarationsMatchingWord({
+    exactMatch,
+    position,
+    uri,
+    word,
+  }: {
+    exactMatch: boolean
+    position: LSP.Position
+    uri: string
+    word: string
+  }): LSP.SymbolInformation[] {
+    logger.debug('Finding Declarations Matching Word...');
+    return this.getAllDeclarations({ uri, position }).filter((symbol) => {
+      if (exactMatch) {
+        logger.debug('name === word');
+        return symbol.name === word
+      } else {
+        logger.debug('name.startsWith(word)');
+        return symbol.name.startsWith(word)
+      }
+    })
+  }
+
+  private getAnalyzedReachableUris({ fromUri }: { fromUri?: string } = {}): string[] {
+    return this.ensureUrisAreAnalyzed(this.getReachableUris({ fromUri }))
+  }
+
+  private ensureUrisAreAnalyzed(uris: string[]): string[] {
+    return uris.filter((uri) => {
+      if (!this.uriToAnalyzedDocument[uri]) {
+        // Either the background analysis didn't run or the file is outside
+        // the workspace. Let us try to analyze the file.
+        try {
+          logger.debug(`Analyzing file not covered by background analysis ${uri}`)
+          const fileContent = fs.readFileSync(new URL(uri), 'utf8')
+          this.analyze({
+            document: TextDocument.create(uri, 'modelica', 1, fileContent),
+          })
+        } catch (err) {
+          logger.warn(`Error while analyzing file ${uri}: ${err}`)
+          return false
+        }
+      }
+
+      return true
+    })
+  }
+
+  private getReachableUris({ fromUri }: { fromUri?: string } = {}): string[] {
+    if (!fromUri) {
+      return Object.keys(this.uriToAnalyzedDocument)
+    }
+    return [fromUri]
+  }
+
+  private getAllDeclarations({
+    uri: fromUri,
+    position,
+  }: { uri?: string; position?: LSP.Position } = {}): LSP.SymbolInformation[] {
+    return this.getAnalyzedReachableUris({ fromUri }).reduce((symbols, uri) => {
+      logger.debug('getAnalyzedReachableUris Initialized');
+      const analyzedDocument = this.uriToAnalyzedDocument[uri]
+
+      if (analyzedDocument) {
+        if (uri !== fromUri || !position) {
+          // TODO: Use the global declarations for external files or if we do not have a position
+        }
+
+        // For the current file we find declarations based on the current scope
+        if (uri === fromUri && position) {
+          const node = analyzedDocument.tree.rootNode?.descendantForPosition({
+            row: position.line,
+            column: position.character,
+          })
+
+          const localDeclarations = getLocalDeclarations({
+            node,
+            rootNode: analyzedDocument.tree.rootNode,
+            uri,
+          })
+          logger.debug('localDeclarations: ', localDeclarations);
+          Object.keys(localDeclarations).map((name) => {
+            const symbolsMatchingWord = localDeclarations[name]
+
+            // Find the latest definition
+            let closestSymbol: LSP.SymbolInformation | null = null
+            symbolsMatchingWord.forEach((symbol) => {
+              // Skip if the symbol is defined in the current file after the requested position
+              if (symbol.location.range.start.line > position.line) {
+                return
+              }
+
+              if (
+                closestSymbol === null ||
+                symbol.location.range.start.line > closestSymbol.location.range.start.line
+              ) {
+                closestSymbol = symbol
+              }
+            })
+
+            if (closestSymbol) {
+              logger.debug('ClosestSymbol: ', closestSymbol);
+              symbols.push(closestSymbol)
+            }
+          })
+        }
+      }
+
+      return symbols
+    }, [] as LSP.SymbolInformation[])
+  }
+
+  /**
+   * Find a block of comments above a line position
+   */
+  public commentsAbove(uri: string, line: number): string | null {
+    const doc = this.uriToAnalyzedDocument[uri]?.document;
+    if (!doc) {
+      return null;
+    }
+  
+    let commentBlock = [];
+    let inBlockComment = false;
+
+    // start from the line above
+    let commentBlockIndex = line - 1;
+  
+    while (commentBlockIndex >= 0) {
+      let currentLineText = doc.getText({
+        start: { line: commentBlockIndex, character: 0 },
+        end: { line: commentBlockIndex + 1, character: 0 },
+      }).trim();
+  
+      if (inBlockComment) {
+        if (currentLineText.startsWith('/*')) {
+          inBlockComment = false;
+          // Remove the /* from the start
+          currentLineText = currentLineText.substring(2).trim();
+        } else {
+          // Remove leading * from lines within the block comment
+          currentLineText = currentLineText.replace(/^\*\s?/, '').trim();
+        }
+        if (currentLineText) { // Don't add empty lines
+          commentBlock.push(currentLineText);
+        }
+      } else {
+        if (currentLineText.startsWith('//')) {
+          // Strip the // and add to block
+          commentBlock.push(currentLineText.substring(2).trim());
+        } else if (currentLineText.endsWith('*/')) {
+          inBlockComment = true;
+          // Remove the */ from the end
+          currentLineText = currentLineText.substring(0, currentLineText.length - 2).trim();
+          if (currentLineText) { // Don't add empty lines
+            commentBlock.push(currentLineText);
+          }
+        } else {
+          break; // Stop if the current line is not part of a comment
+        }
+      }
+  
+      commentBlockIndex -= 1;
+    }
+  
+    if (commentBlock.length) {
+      commentBlock = ['```txt', ...commentBlock.reverse(), '```'];
+      return commentBlock.join('\n');
+    }
+  
+    return null;
+  }
+
+  /**
+ * Find the full word at the given point.
+ */
+  public wordAtPoint(uri: string, line: number, column: number): string | null {
+    const node = this.nodeAtPoint(uri, line, column)
+
+    if (!node || node.childCount > 0 || node.text.trim() === '') {
+      return null
+    }
+
+    return node.text.trim()
+  }
+
+  public wordAtPointFromTextPosition(
+    params: LSP.TextDocumentPositionParams,
+  ): string | null {
+    return this.wordAtPoint(
+      params.textDocument.uri,
+      params.position.line,
+      params.position.character,
+    )
+  }
+
+  /**
+   * Find the node at the given point.
+   */
+  private nodeAtPoint(
+    uri: string,
+    line: number,
+    column: number,
+  ): Parser.SyntaxNode | null {
+    const tree = this.uriToAnalyzedDocument[uri]?.tree
+
+    if (!tree?.rootNode) {
+      // Check for lacking rootNode (due to failed parse?)
+      return null
+    }
+
+    return tree.rootNode.descendantForPosition({ row: line, column })
   }
 }
