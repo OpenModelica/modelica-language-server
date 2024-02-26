@@ -1,32 +1,48 @@
 import { SyntaxNode } from 'web-tree-sitter';
 import * as TreeSitterUtil from './tree-sitter';
 import * as LSP from 'vscode-languageserver';
+import { logger } from './logger';
 
 /**
  * Extracts hover information for a Modelica class or package.
  * 
  * @param rootNode The root node of the AST for the current document.
  * @param position The position of the cursor in the document.
- * @returns Markdown formatted string with hover information.
+ * @returns Text of the description_string or string saying there is no description.
  */
-export function extractHoverInformation(targetNode: SyntaxNode | null): string | null {
-    // Find the node at the cursor's position.
+export function extractHoverInformation(targetNode: SyntaxNode | null): string {
 
     if (!targetNode) {
-        return null;
+        logger.debug('No target node found.');
+        return '';
+    }
+
+    if (targetNode.type !== 'IDENT'){
+        logger.debug('Target node is not an identifier.');
+        return '';
     }
 
     // Find the parent class_definition node.
     const classDefNode = TreeSitterUtil.findParent(targetNode, n => n.type === 'class_definition');
 
     if (!classDefNode) {
-        return null;
+        logger.debug('No class definition found.');
+        return '';
+    }
+
+    // Check if the targetNode is the first IDENT child of the class_definition, indicating it's the class name.
+    const isClassName = classDefNode.namedChildren.some((child, index) => 
+        child.type === 'long_class_specifier' && 
+        child.firstChild?.type === 'IDENT' && 
+        child.firstChild?.text === targetNode.text);
+
+    if (!isClassName) {
+        return ''; // The targetNode is not the class name identifier.
     }
 
     // Extract the description_string if it exists.
     const descriptionNode = TreeSitterUtil.findFirst(classDefNode, n => n.type === 'description_string');
     const descriptionText = descriptionNode ? descriptionNode.firstChild?.text : null;
 
-    // Format as Markdown (simple example).
-    return descriptionText ? descriptionText : "No description available.";
+    return descriptionText ? `\n\n${descriptionText}` : `\n\n No description available.`;
 }

@@ -324,7 +324,7 @@ export default class Analyzer {
   public descriptionInfo(
     uri: string,
     position: LSP.Position
-    ): string | null{
+    ): string{
       const targetNode = this.nodeAtPoint(uri, position.line, position.character);
       return extractHoverInformation(targetNode)
     }

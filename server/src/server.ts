@@ -169,7 +169,7 @@ export class ModelicaServer {
   }: {
     symbol: LSP.SymbolInformation
     currentUri: string
-  }): LSP.MarkupContent {
+  }): string {
 
     logger.debug(`getDocumentationForSymbol: symbol=${symbol.name} uri=${symbol.location.uri}`)
 
@@ -187,9 +187,8 @@ export class ModelicaServer {
     // TODO: An improvement could be to add show the symbol definition in the hover instead
     // of the defined location – similar to how VSCode works for languages like TypeScript.
 
-    return getMarkdownContent(
-      `${hoverHeader} - *defined ${symbolLocation}*${commentAboveDocumentation}`,
-    )
+    return `${hoverHeader} - *defined ${symbolLocation}*${commentAboveDocumentation}`
+
   }
 
   // ==============================
@@ -243,18 +242,18 @@ export class ModelicaServer {
       .map((symbol: LSP.SymbolInformation) =>
         this.getDocumentationForSymbol({ currentUri, symbol }),
       )
-
+      /*
     if (symbolDocumentation.length === 1) {
       logger.debug('Symbol Documentation: ', symbolDocumentation[0]);
-      const position = params.position
-      const uri = currentUri
-      const description = this.analyzer.descriptionInfo(uri, position)
-      if (description) {
-        return {contents: getMarkdownContent(description)}
-      }
-      //return { contents: symbolDocumentation[0] }
-      return null
+      return { contents: symbolDocumentation[0] };
+    }*/
+    const description = this.analyzer.descriptionInfo(currentUri, params.position)
+
+    if (symbolDocumentation.length === 1 || description) {
+      logger.debug('Documentation: ', symbolDocumentation[0], description);
+      return { contents: getMarkdownContent(symbolDocumentation[0] + description) };
     }
+    
     return null
   }
 }
@@ -270,6 +269,7 @@ return { contents: { kind: LSP.MarkupKind.Markdown, value: [
 /**
  * Deduplicate symbols by prioritizing the current file.
  */
+
 function deduplicateSymbols({
   symbols,
   currentUri,
