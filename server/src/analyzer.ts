@@ -50,6 +50,7 @@ import {
 } from './util/declarations';
 import { logger } from './util/logger';
 import { log } from 'console';
+import { extractHoverInformation } from './util/hoverUtil';
 
 type AnalyzedDocument = {
   document: TextDocument,
@@ -319,4 +320,12 @@ export default class Analyzer {
 
     return tree.rootNode.descendantForPosition({ row: line, column })
   }
+
+  public descriptionInfo(
+    uri: string,
+    position: LSP.Position
+    ): string | null{
+      const targetNode = this.nodeAtPoint(uri, position.line, position.character);
+      return extractHoverInformation(targetNode)
+    }
 }

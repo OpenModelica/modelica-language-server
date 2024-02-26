@@ -170,14 +170,14 @@ export class ModelicaServer {
     symbol: LSP.SymbolInformation
     currentUri: string
   }): LSP.MarkupContent {
-    logger.debug(
-      `getDocumentationForSymbol: symbol=${symbol.name} uri=${symbol.location.uri}`,
-    )
+
+    logger.debug(`getDocumentationForSymbol: symbol=${symbol.name} uri=${symbol.location.uri}`)
+
     const symbolUri = symbol.location.uri
     const symbolStartLine = symbol.location.range.start.line
 
     const commentAboveSymbol = this.analyzer.commentsAbove(symbolUri, symbolStartLine)
-    const symbolDocumentation = commentAboveSymbol ? `\n\n${commentAboveSymbol}` : ''
+    const commentAboveDocumentation = commentAboveSymbol ? `\n\n${commentAboveSymbol}` : ''
     const hoverHeader = `${symbolKindToDescription(symbol.kind)}: **${symbol.name}**`
     const symbolLocation =
       symbolUri !== currentUri
@@ -188,7 +188,7 @@ export class ModelicaServer {
     // of the defined location – similar to how VSCode works for languages like TypeScript.
 
     return getMarkdownContent(
-      `${hoverHeader} - *defined ${symbolLocation}*${symbolDocumentation}`,
+      `${hoverHeader} - *defined ${symbolLocation}*${commentAboveDocumentation}`,
     )
   }
 
@@ -246,7 +246,14 @@ export class ModelicaServer {
 
     if (symbolDocumentation.length === 1) {
       logger.debug('Symbol Documentation: ', symbolDocumentation[0]);
-      return { contents: symbolDocumentation[0] }
+      const position = params.position
+      const uri = currentUri
+      const description = this.analyzer.descriptionInfo(uri, position)
+      if (description) {
+        return {contents: getMarkdownContent(description)}
+      }
+      //return { contents: symbolDocumentation[0] }
+      return null
     }
     return null
   }
