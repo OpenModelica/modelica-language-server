@@ -187,8 +187,10 @@ export class ModelicaServer {
     // TODO: An improvement could be to add show the symbol definition in the hover instead
     // of the defined location – similar to how VSCode works for languages like TypeScript.
 
-    return `${hoverHeader} - *defined ${symbolLocation}*${commentAboveDocumentation}`
-
+    if (!undefined) {return `${hoverHeader} - *defined ${symbolLocation}* \n${commentAboveDocumentation}`
+    } else {
+      return `${hoverHeader}`
+    }
   }
 
   // ==============================
@@ -232,28 +234,23 @@ export class ModelicaServer {
     const symbolDocumentation = deduplicateSymbols({
       symbols: symbolsMatchingWord,
       currentUri,
-    })
+    })/*
       // do not return hover referencing for the current line
       .filter(
         (symbol) =>
           symbol.location.uri !== currentUri ||
           symbol.location.range.start.line !== params.position.line,
-      )
+      )*/
       .map((symbol: LSP.SymbolInformation) =>
         this.getDocumentationForSymbol({ currentUri, symbol }),
       )
-      /*
-    if (symbolDocumentation.length === 1) {
-      logger.debug('Symbol Documentation: ', symbolDocumentation[0]);
-      return { contents: symbolDocumentation[0] };
-    }*/
     const description = this.analyzer.descriptionInfo(currentUri, params.position)
 
     if (symbolDocumentation.length === 1 || description) {
       logger.debug('Documentation: ', symbolDocumentation[0], description);
-      return { contents: getMarkdownContent(symbolDocumentation[0] + description) };
+      return { contents: getMarkdownContent(symbolDocumentation[0], description) };
     }
-    
+
     return null
   }
 }

@@ -273,8 +273,8 @@ export default class Analyzer {
     }
   
     if (commentBlock.length) {
-      commentBlock = ['```txt', ...commentBlock.reverse(), '```'];
-      return commentBlock.join('\n');
+      commentBlock = [...commentBlock.reverse()];
+      return commentBlock.join('\n\n');
     }
   
     return null;
@@ -326,6 +326,10 @@ export default class Analyzer {
     position: LSP.Position
     ): string{
       const targetNode = this.nodeAtPoint(uri, position.line, position.character);
+      if (!targetNode) {
+          logger.debug('No target node found.');
+          return '';
+      }
       return extractHoverInformation(targetNode)
     }
 }
