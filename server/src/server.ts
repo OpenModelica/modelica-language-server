@@ -162,7 +162,6 @@ export class ModelicaServer {
     )
   }
 
-// getDocumentationForSymbol aus dem Bash LSP
   private getCommentForSymbol({
     currentUri,
     symbol,
@@ -188,10 +187,6 @@ export class ModelicaServer {
     // of the defined location – similar to how VSCode works for languages like TypeScript.
 
     return `\n${commentAbove}`
-  }
-
-  private documentationForHover(hoverInfo: string): LSP.MarkupContent | null {
-    return null
   }
 
   // ==============================
@@ -232,19 +227,6 @@ export class ModelicaServer {
     })
     logger.debug('symbolsMatchingWord: ', symbolsMatchingWord);
 
-    const commentAboveDocumentation = deduplicateSymbols({
-      symbols: symbolsMatchingWord,
-      currentUri,
-    })/*
-      // do not return hover referencing for the current line
-      .filter(
-        (symbol) =>
-          symbol.location.uri !== currentUri ||
-          symbol.location.range.start.line !== params.position.line,
-      )*/
-      .map((symbol: LSP.SymbolInformation) =>
-        this.getCommentForSymbol({ currentUri, symbol }),
-      )
     const hoverInfo = this.analyzer.hoverInformations(currentUri, params.position)
 
     if (hoverInfo) {
