@@ -321,10 +321,10 @@ export default class Analyzer {
     return tree.rootNode.descendantForPosition({ row: line, column })
   }
 
-  public descriptionInfo(
+  public hoverInformations(
     uri: string,
     position: LSP.Position
-    ): string{
+    ): string {
       const targetNode = this.nodeAtPoint(uri, position.line, position.character);
       if (!targetNode) {
           logger.debug('No target node found.');

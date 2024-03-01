@@ -163,7 +163,7 @@ export class ModelicaServer {
   }
 
 // getDocumentationForSymbol aus dem Bash LSP
-  private getDocumentationForSymbol({
+  private getCommentForSymbol({
     currentUri,
     symbol,
   }: {
@@ -177,7 +177,7 @@ export class ModelicaServer {
     const symbolStartLine = symbol.location.range.start.line
 
     const commentAboveSymbol = this.analyzer.commentsAbove(symbolUri, symbolStartLine)
-    const commentAboveDocumentation = commentAboveSymbol ? `\n\n${commentAboveSymbol}` : ''
+    const commentAbove = commentAboveSymbol ? `\n\n${commentAboveSymbol}` : ''
     const hoverHeader = `${symbolKindToDescription(symbol.kind)}: **${symbol.name}**`
     const symbolLocation =
       symbolUri !== currentUri
@@ -187,10 +187,11 @@ export class ModelicaServer {
     // TODO: An improvement could be to add show the symbol definition in the hover instead
     // of the defined location – similar to how VSCode works for languages like TypeScript.
 
-    if (!undefined) {return `${hoverHeader} - *defined ${symbolLocation}* \n${commentAboveDocumentation}`
-    } else {
-      return `${hoverHeader}`
-    }
+    return `\n${commentAbove}`
+  }
+
+  private documentationForHover(hoverInfo: string): LSP.MarkupContent | null {
+    return null
   }
 
   // ==============================
@@ -231,7 +232,7 @@ export class ModelicaServer {
     })
     logger.debug('symbolsMatchingWord: ', symbolsMatchingWord);
 
-    const symbolDocumentation = deduplicateSymbols({
+    const commentAboveDocumentation = deduplicateSymbols({
       symbols: symbolsMatchingWord,
       currentUri,
     })/*
@@ -242,31 +243,22 @@ export class ModelicaServer {
           symbol.location.range.start.line !== params.position.line,
       )*/
       .map((symbol: LSP.SymbolInformation) =>
-        this.getDocumentationForSymbol({ currentUri, symbol }),
+        this.getCommentForSymbol({ currentUri, symbol }),
       )
-    const description = this.analyzer.descriptionInfo(currentUri, params.position)
+    const hoverInfo = this.analyzer.hoverInformations(currentUri, params.position)
 
-    if (symbolDocumentation.length === 1 || description) {
-      logger.debug('Documentation: ', symbolDocumentation[0], description);
-      return { contents: getMarkdownContent(symbolDocumentation[0], description) };
+    if (hoverInfo) {
+      logger.debug('Documentation: ', hoverInfo);
+      return { contents: getMarkdownContent(hoverInfo) };
     }
 
     return null
   }
 }
 
-/*
-return { contents: { kind: LSP.MarkupKind.Markdown, value: [
-  '# Test',
-  'Text text text',
-  '```modelica code```'].join('\n')
-  }
-}
-*/
 /**
  * Deduplicate symbols by prioritizing the current file.
  */
-
 function deduplicateSymbols({
   symbols,
   currentUri,
