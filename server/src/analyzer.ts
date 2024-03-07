@@ -65,7 +65,7 @@ export default class Analyzer {
   constructor(parser:Parser)
   {
     this.parser = parser;
-  }  
+  }
 
   public analyze({document}: {document: TextDocument}): LSP.Diagnostic[] {
     logger.debug('analyze:');
@@ -123,16 +123,16 @@ export default class Analyzer {
     return this.getAllDeclarations({ uri, position }).filter((symbol) => {
       if (exactMatch) {
         logger.debug('name === word');
-        return symbol.name === word
+        return symbol.name === word;
       } else {
         logger.debug('name.startsWith(word)');
-        return symbol.name.startsWith(word)
+        return symbol.name.startsWith(word);
       }
-    })
+    });
   }
 
   private getAnalyzedReachableUris({ fromUri }: { fromUri?: string } = {}): string[] {
-    return this.ensureUrisAreAnalyzed(this.getReachableUris({ fromUri }))
+    return this.ensureUrisAreAnalyzed(this.getReachableUris({ fromUri }));
   }
 
   private ensureUrisAreAnalyzed(uris: string[]): string[] {
@@ -141,26 +141,26 @@ export default class Analyzer {
         // Either the background analysis didn't run or the file is outside
         // the workspace. Let us try to analyze the file.
         try {
-          logger.debug(`Analyzing file not covered by background analysis ${uri}`)
-          const fileContent = fs.readFileSync(new URL(uri), 'utf8')
+          logger.debug(`Analyzing file not covered by background analysis ${uri}`);
+          const fileContent = fs.readFileSync(new URL(uri), 'utf8');
           this.analyze({
             document: TextDocument.create(uri, 'modelica', 1, fileContent),
-          })
+          });
         } catch (err) {
-          logger.warn(`Error while analyzing file ${uri}: ${err}`)
-          return false
+          logger.warn(`Error while analyzing file ${uri}: ${err}`);
+          return false;
         }
       }
 
-      return true
-    })
+      return true;
+    });
   }
 
   private getReachableUris({ fromUri }: { fromUri?: string } = {}): string[] {
     if (!fromUri) {
-      return Object.keys(this.uriToAnalyzedDocument)
+      return Object.keys(this.uriToAnalyzedDocument);
     }
-    return [fromUri]
+    return [fromUri];
   }
 
   private getAllDeclarations({
@@ -169,7 +169,7 @@ export default class Analyzer {
   }: { uri?: string; position?: LSP.Position } = {}): LSP.SymbolInformation[] {
     return this.getAnalyzedReachableUris({ fromUri }).reduce((symbols, uri) => {
       logger.debug('getAnalyzedReachableUris Initialized');
-      const analyzedDocument = this.uriToAnalyzedDocument[uri]
+      const analyzedDocument = this.uriToAnalyzedDocument[uri];
 
       if (analyzedDocument) {
         if (uri !== fromUri || !position) {
@@ -181,43 +181,43 @@ export default class Analyzer {
           const node = analyzedDocument.tree.rootNode?.descendantForPosition({
             row: position.line,
             column: position.character,
-          })
+          });
 
           const localDeclarations = getLocalDeclarations({
             node,
             rootNode: analyzedDocument.tree.rootNode,
             uri,
-          })
+          });
           logger.debug('localDeclarations: ', localDeclarations);
           Object.keys(localDeclarations).map((name) => {
-            const symbolsMatchingWord = localDeclarations[name]
+            const symbolsMatchingWord = localDeclarations[name];
 
             // Find the latest definition
-            let closestSymbol: LSP.SymbolInformation | null = null
+            let closestSymbol: LSP.SymbolInformation | null = null;
             symbolsMatchingWord.forEach((symbol) => {
               // Skip if the symbol is defined in the current file after the requested position
               if (symbol.location.range.start.line > position.line) {
-                return
+                return;
               }
 
               if (
                 closestSymbol === null ||
                 symbol.location.range.start.line > closestSymbol.location.range.start.line
               ) {
-                closestSymbol = symbol
+                closestSymbol = symbol;
               }
-            })
+            });
 
             if (closestSymbol) {
               logger.debug('ClosestSymbol: ', closestSymbol);
-              symbols.push(closestSymbol)
+              symbols.push(closestSymbol);
             }
-          })
+          });
         }
       }
 
-      return symbols
-    }, [] as LSP.SymbolInformation[])
+      return symbols;
+    }, [] as LSP.SymbolInformation[]);
   }
 
   /**
@@ -228,19 +228,19 @@ export default class Analyzer {
     if (!doc) {
       return null;
     }
-  
+
     let commentBlock = [];
     let inBlockComment = false;
 
     // start from the line above
     let commentBlockIndex = line - 1;
-  
+
     while (commentBlockIndex >= 0) {
       let currentLineText = doc.getText({
         start: { line: commentBlockIndex, character: 0 },
         end: { line: commentBlockIndex + 1, character: 0 },
       }).trim();
-  
+
       if (inBlockComment) {
         if (currentLineText.startsWith('/*')) {
           inBlockComment = false;
@@ -268,15 +268,15 @@ export default class Analyzer {
           break; // Stop if the current line is not part of a comment
         }
       }
-  
+
       commentBlockIndex -= 1;
     }
-  
+
     if (commentBlock.length) {
       commentBlock = [...commentBlock.reverse()];
       return commentBlock.join('\n\n');
     }
-  
+
     return null;
   }
 
@@ -284,13 +284,13 @@ export default class Analyzer {
  * Find the full word at the given point.
  */
   public wordAtPoint(uri: string, line: number, column: number): string | null {
-    const node = this.nodeAtPoint(uri, line, column)
+    const node = this.nodeAtPoint(uri, line, column);
 
     if (!node || node.childCount > 0 || node.text.trim() === '') {
-      return null
+      return null;
     }
 
-    return node.text.trim()
+    return node.text.trim();
   }
 
   public wordAtPointFromTextPosition(
@@ -300,7 +300,7 @@ export default class Analyzer {
       params.textDocument.uri,
       params.position.line,
       params.position.character,
-    )
+    );
   }
 
   /**
@@ -311,14 +311,14 @@ export default class Analyzer {
     line: number,
     column: number,
   ): Parser.SyntaxNode | null {
-    const tree = this.uriToAnalyzedDocument[uri]?.tree
+    const tree = this.uriToAnalyzedDocument[uri]?.tree;
 
     if (!tree?.rootNode) {
       // Check for lacking rootNode (due to failed parse?)
-      return null
+      return null;
     }
 
-    return tree.rootNode.descendantForPosition({ row: line, column })
+    return tree.rootNode.descendantForPosition({ row: line, column });
   }
 
   public hoverInformations(
@@ -330,6 +330,6 @@ export default class Analyzer {
           logger.debug('No target node found.');
           return '';
       }
-      return extractHoverInformation(targetNode)
+      return extractHoverInformation(targetNode);
     }
 }

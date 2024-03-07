@@ -1,4 +1,4 @@
-class Modelica.Blocks.Sources.Step "Generate step signal of type Real"
+class Modelica_Blocks_Sources_Step "Generate step signal of type Real"
   parameter Real height = 1.0 "Height of step";
   output Real y "Connector of Real output signal";
   parameter Real offset = 0.0 "Offset of output signal y";
@@ -17,4 +17,4 @@ The Real output y is a step signal:
 </p>
 
 </html>"));
-end Modelica.Blocks.Sources.Step;
+end Modelica_Blocks_Sources_Step;

@@ -2,7 +2,7 @@
  * Flatten a 2-dimensional array into a 1-dimensional one.
  */
 export function flattenArray<T>(nestedArray: T[][]): T[] {
-  return nestedArray.reduce((acc, array) => [...acc, ...array], [])
+  return nestedArray.reduce((acc, array) => [...acc, ...array], []);
 }
 
 /**
@@ -10,7 +10,7 @@ export function flattenArray<T>(nestedArray: T[][]): T[] {
  * Doesn't preserve ordering.
  */
 export function uniq<A>(a: A[]): A[] {
-  return Array.from(new Set(a))
+  return Array.from(new Set(a));
 }
 
 /**
@@ -22,17 +22,17 @@ export function uniqueBasedOnHash<A extends Record<string, any>>(
   elementToHash: (a: A) => string,
   __result: A[] = [],
 ): A[] {
-  const result: typeof list = []
-  const hashSet = new Set<string>()
+  const result: typeof list = [];
+  const hashSet = new Set<string>();
 
   list.forEach((element) => {
-    const hash = elementToHash(element)
+    const hash = elementToHash(element);
     if (hashSet.has(hash)) {
-      return
+      return;
     }
-    hashSet.add(hash)
-    result.push(element)
-  })
+    hashSet.add(hash);
+    result.push(element);
+  });
 
-  return result
+  return result;
 }

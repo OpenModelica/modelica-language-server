@@ -103,8 +103,8 @@ export class ModelicaServer {
 
   /**
    * Register handlers for the events from the Language Server Protocol
-   * 
-   * @param connection 
+   *
+   * @param connection
    */
   public register(connection: LSP.Connection): void {
     let currentDocument: TextDocument | null = null;
@@ -113,7 +113,7 @@ export class ModelicaServer {
     // Make the text document manager listen on the connection
     // for open, change and close text document events
     this.documents.listen(this.connection);
-    
+
     // The content of a text document has changed. This event is emitted
     // when the text document first opened or when its content has changed.
     this.documents.onDidChangeContent(({ document }) => {
@@ -156,10 +156,10 @@ export class ModelicaServer {
     params: LSP.ReferenceParams | LSP.TextDocumentPositionParams
     word?: string | null
   }) {
-    const wordLog = word ? `"${word}"` : 'null'
+    const wordLog = word ? `"${word}"` : 'null';
     logger.debug(
       `${request} ${params.position.line}:${params.position.character} word=${wordLog}`,
-    )
+    );
   }
 
   private getCommentForSymbol({
@@ -170,23 +170,23 @@ export class ModelicaServer {
     currentUri: string
   }): string {
 
-    logger.debug(`getDocumentationForSymbol: symbol=${symbol.name} uri=${symbol.location.uri}`)
+    logger.debug(`getDocumentationForSymbol: symbol=${symbol.name} uri=${symbol.location.uri}`);
 
-    const symbolUri = symbol.location.uri
-    const symbolStartLine = symbol.location.range.start.line
+    const symbolUri = symbol.location.uri;
+    const symbolStartLine = symbol.location.range.start.line;
 
-    const commentAboveSymbol = this.analyzer.commentsAbove(symbolUri, symbolStartLine)
-    const commentAbove = commentAboveSymbol ? `\n\n${commentAboveSymbol}` : ''
-    const hoverHeader = `${symbolKindToDescription(symbol.kind)}: **${symbol.name}**`
+    const commentAboveSymbol = this.analyzer.commentsAbove(symbolUri, symbolStartLine);
+    const commentAbove = commentAboveSymbol ? `\n\n${commentAboveSymbol}` : '';
+    const hoverHeader = `${symbolKindToDescription(symbol.kind)}: **${symbol.name}**`;
     const symbolLocation =
       symbolUri !== currentUri
         ? `in ${path.relative(path.dirname(currentUri), symbolUri)}`
-        : `on line ${symbolStartLine + 1}`
+        : `on line ${symbolStartLine + 1}`;
 
     // TODO: An improvement could be to add show the symbol definition in the hover instead
     // of the defined location – similar to how VSCode works for languages like TypeScript.
 
-    return `\n${commentAbove}`
+    return `\n${commentAbove}`;
   }
 
   // ==============================
@@ -210,13 +210,13 @@ export class ModelicaServer {
   private async onHover(
     params: LSP.TextDocumentPositionParams,
   ): Promise<LSP.Hover | null> {
-    const word = this.analyzer.wordAtPointFromTextPosition(params)
-    const currentUri = params.textDocument.uri
+    const word = this.analyzer.wordAtPointFromTextPosition(params);
+    const currentUri = params.textDocument.uri;
     logger.debug('------------');
-    this.logRequest({ request: 'onHover init', params, word })
+    this.logRequest({ request: 'onHover init', params, word });
 
     if (!word) {
-      return null
+      return null;
     }
 
     const symbolsMatchingWord = this.analyzer.findDeclarationsMatchingWord({
@@ -224,17 +224,17 @@ export class ModelicaServer {
       uri: currentUri,
       word,
       position: params.position,
-    })
+    });
     logger.debug('symbolsMatchingWord: ', symbolsMatchingWord);
 
-    const hoverInfo = this.analyzer.hoverInformations(currentUri, params.position)
+    const hoverInfo = this.analyzer.hoverInformations(currentUri, params.position);
 
     if (hoverInfo) {
       logger.debug('Documentation: ', hoverInfo);
       return { contents: getMarkdownContent(hoverInfo) };
     }
 
-    return null
+    return null;
   }
 }
 
@@ -249,11 +249,11 @@ function deduplicateSymbols({
   currentUri: string
 }) {
   const isCurrentFile = ({ location: { uri } }: LSP.SymbolInformation) =>
-    uri === currentUri
+    uri === currentUri;
 
-  const getSymbolId = ({ name, kind }: LSP.SymbolInformation) => `${name}${kind}`
+  const getSymbolId = ({ name, kind }: LSP.SymbolInformation) => `${name}${kind}`;
 
-  const symbolsCurrentFile = symbols.filter((s) => isCurrentFile(s))
+  const symbolsCurrentFile = symbols.filter((s) => isCurrentFile(s));
 
   const symbolsOtherFiles = symbols
     .filter((s) => !isCurrentFile(s))
@@ -264,10 +264,10 @@ function deduplicateSymbols({
           (symbolCurrentFile) =>
             getSymbolId(symbolCurrentFile) === getSymbolId(symbolOtherFiles),
         ),
-    )
+    );
 
   // NOTE: it might be that uniqueBasedOnHash is not needed anymore
-  return uniqueBasedOnHash([...symbolsCurrentFile, ...symbolsOtherFiles], getSymbolId)
+  return uniqueBasedOnHash([...symbolsCurrentFile, ...symbolsOtherFiles], getSymbolId);
 }
 
 function symbolKindToDescription(kind: LSP.SymbolKind): string {
@@ -292,7 +292,7 @@ function getMarkdownContent(documentation: string, language?: string): LSP.Marku
         ['``` ' + language, documentation, '```'].join('\n')
       : documentation,
     kind: LSP.MarkupKind.Markdown,
-  }
+  };
 }
 
 // Create a connection for the server, using Node's IPC as a transport.
