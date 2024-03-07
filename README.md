@@ -16,10 +16,47 @@ features:
 
   - Provide Outline of Modelica files.
 
+    ![Outline](images/outline_demo.png)
+
 ## Installation
 
-Check the Marketplace for
-[OpenModelica.modelica-language-server]((https://marketplace.visualstudio.com/items?itemName=OpenModelica.modelica-language-server)).
+### Via Marketplace
+
+`OpenModelica.modelica-language-server` is not yet listed on the marketplace.
+
+### Via VSIX File
+
+Download the latest
+[modelica-language-server-0.1.0.vsix](https://github.com/OpenModelica/modelica-language-server/releases/download/v0.1.0/modelica-language-server-0.1.0.vsix)
+from the
+[releases](https://github.com/OpenModelica/modelica-language-server/releases)
+page.
+
+Check the [VS Code documentation](https://code.visualstudio.com/docs/editor/extension-marketplace#_install-from-a-vsix)
+on how to install a .vsix file.
+Use the `Install from VSIX` command or run
+
+```bash
+code --install-extension modelica-language-server-0.1.0.vsix
+```
+
+## Contributing ❤️
+
+Contributions are very welcome!
+
+We made the first tiny step but need help to add more features and refine the
+language server.
+
+If you are searching for a good point to start
+check the
+[good first issue](https://github.com/OpenModelica/modelica-language-server/labels/good%20first%20issue).
+To see where the development is heading to check the
+[Projects section](https://github.com/OpenModelica/modelica-language-server/projects?query=is%3Aopen).
+If you need more information start a discussion over at
+[OpenModelica/OpenModelica](https://github.com/OpenModelica/OpenModelica).
+
+Found a bug or having issues? Open a
+[new issue](https://github.com/OpenModelica/modelica-language-server/issues/new/choose).
 
 ## Structure
 
@@ -59,7 +96,7 @@ npx vsce package
 
 ## License
 
-modelica-language-server is licensed under the OSMC Public License, see
+modelica-language-server is licensed under the OSMC Public License v1.8, see
 [OSMC-License.txt](./OSMC-License.txt).
 
 ### 3rd Party Licenses
