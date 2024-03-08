@@ -36,14 +36,17 @@
 /* -----------------------------------------------------------------------------
  * Taken from bash-language-server and adapted to Modelica language server
  * https://github.com/bash-lsp/bash-language-server/blob/main/server/src/server.ts
- * -----------------------------------------------------------------------------
+ * ----------------------------------------------------------------------------
  */
 
+import * as path from 'node:path';
 import * as LSP from 'vscode-languageserver/node';
 import { TextDocument} from 'vscode-languageserver-textdocument';
 
 import { initializeParser } from './parser';
 import Analyzer from './analyzer';
+import { uniqueBasedOnHash } from './util/array';
+import { extractHoverInformation } from './util/hoverUtil';
 import { logger, setLogConnection, setLogLevel } from './util/logger';
 
 /**
@@ -57,11 +60,11 @@ export class ModelicaServer {
 
   private constructor(
     analyzer: Analyzer,
-    clientCapabilities: LSP.ClientCapabilities,
+    capabilities: LSP.ClientCapabilities,
     connection: LSP.Connection
   ) {
     this.analyzer = analyzer;
-    this.clientCapabilities = clientCapabilities;
+    this.clientCapabilities = capabilities;
     this.connection = connection;
   }
 
@@ -91,7 +94,7 @@ export class ModelicaServer {
     return {
       textDocumentSync: LSP.TextDocumentSyncKind.Full,
       completionProvider: undefined,
-      hoverProvider: false,
+      hoverProvider: true,
       signatureHelpProvider: undefined,
       documentSymbolProvider: true,
       colorProvider: false,
@@ -99,25 +102,18 @@ export class ModelicaServer {
     };
   }
 
+  /**
+   * Register handlers for the events from the Language Server Protocol
+   *
+   * @param connection
+   */
   public register(connection: LSP.Connection): void {
-
     let currentDocument: TextDocument | null = null;
     let initialized = false;
 
     // Make the text document manager listen on the connection
     // for open, change and close text document events
     this.documents.listen(this.connection);
-
-    connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
-
-    connection.onInitialized(async () => {
-      initialized = true;
-      if (currentDocument) {
-        // If we already have a document, analyze it now that we're initialized
-        // and the linter is ready.
-        this.analyzeDocument(currentDocument);
-      }
-    });
 
     // The content of a text document has changed. This event is emitted
     // when the text document first opened or when its content has changed.
@@ -132,27 +128,157 @@ export class ModelicaServer {
         this.analyzeDocument(document);
       }
     });
-  }
 
+    connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
+    connection.onHover(this.onHover.bind(this));
+
+    connection.onInitialized(async () => {
+      initialized = true;
+      if (currentDocument) {
+        // If we already have a document, analyze it now that we're initialized
+        // and the linter is ready.
+        this.analyzeDocument(currentDocument);
+      }
+    });
+  }
 
   private async analyzeDocument(document: TextDocument) {
     const diagnostics = this.analyzer.analyze(document);
   }
 
+  private getCommentForSymbol({
+    currentUri,
+    symbol,
+  }: {
+    symbol: LSP.SymbolInformation
+    currentUri: string
+  }): string {
+
+    logger.debug(`getDocumentationForSymbol: symbol=${symbol.name} uri=${symbol.location.uri}`);
+
+    const symbolUri = symbol.location.uri;
+    const symbolStartLine = symbol.location.range.start.line;
+
+    const commentAboveSymbol = this.analyzer.commentsAbove(symbolUri, symbolStartLine);
+    const commentAbove = commentAboveSymbol ? `\n\n${commentAboveSymbol}` : '';
+    const hoverHeader = `${symbolKindToDescription(symbol.kind)}: **${symbol.name}**`;
+    const symbolLocation =
+      symbolUri !== currentUri
+        ? `in ${path.relative(path.dirname(currentUri), symbolUri)}`
+        : `on line ${symbolStartLine + 1}`;
+
+    // TODO: An improvement could be to add show the symbol definition in the hover instead
+    // of the defined location – similar to how VSCode works for languages like TypeScript.
+
+    return `\n${commentAbove}`;
+  }
+
+  // ==============================
+  // Language server event handlers
+  // ==============================
+
   /**
    * Provide symbols defined in document.
    *
-   * @param params  Unused.
-   * @returns       Symbol information.
+   * @param symbolParams  Document symbols of given text document.
+   * @returns             Symbol information.
    */
-  private onDocumentSymbol(params: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
+  private onDocumentSymbol(symbolParams: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
     // TODO: ideally this should return LSP.DocumentSymbol[] instead of LSP.SymbolInformation[]
     // which is a hierarchy of symbols.
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
     logger.debug(`onDocumentSymbol`);
-    return this.analyzer.getDeclarationsForUri(params.textDocument.uri);
+    return this.analyzer.getDeclarationsForUri(symbolParams.textDocument.uri);
   }
 
+  /**
+   * Provide hover information at given text document position.
+   *
+   * @param position  Text document position.
+   * @returns         Hover information.
+   */
+  private async onHover(
+    position: LSP.TextDocumentPositionParams
+  ): Promise<LSP.Hover | null> {
+    logger.debug('onHover');
+
+    const node = this.analyzer.NodeFromTextPosition(position);
+    if (node === null) {
+      return null;
+    }
+
+    const identifier = node.text.trim();
+    const symbolsMatchingWord = this.analyzer.getReachableDefinitions(
+      position.textDocument.uri,
+      position.position,
+      identifier);
+    logger.debug('symbolsMatchingWord: ', symbolsMatchingWord);
+    if (symbolsMatchingWord.length == 0) {
+      return null;
+    }
+
+    const hoverInfo = extractHoverInformation(node);
+    if (hoverInfo == null) {
+      return null;
+    }
+    logger.debug(hoverInfo);
+
+    const markdown : LSP.MarkupContent = {
+      kind: LSP.MarkupKind.Markdown,
+      value: hoverInfo
+    };
+
+    return {
+      contents: markdown
+    } as LSP.Hover;
+  }
+}
+
+/**
+ * Deduplicate symbols by prioritizing the current file.
+ */
+function deduplicateSymbols({
+  symbols,
+  currentUri,
+}: {
+  symbols: LSP.SymbolInformation[]
+  currentUri: string
+}) {
+  const isCurrentFile = ({ location: { uri } }: LSP.SymbolInformation) =>
+    uri === currentUri;
+
+  const getSymbolId = ({ name, kind }: LSP.SymbolInformation) => `${name}${kind}`;
+
+  const symbolsCurrentFile = symbols.filter((s) => isCurrentFile(s));
+
+  const symbolsOtherFiles = symbols
+    .filter((s) => !isCurrentFile(s))
+    // Remove identical symbols matching current file
+    .filter(
+      (symbolOtherFiles) =>
+        !symbolsCurrentFile.some(
+          (symbolCurrentFile) =>
+            getSymbolId(symbolCurrentFile) === getSymbolId(symbolOtherFiles),
+        ),
+    );
+
+  // NOTE: it might be that uniqueBasedOnHash is not needed anymore
+  return uniqueBasedOnHash([...symbolsCurrentFile, ...symbolsOtherFiles], getSymbolId);
+}
+
+function symbolKindToDescription(kind: LSP.SymbolKind): string {
+  switch (kind) {
+    case LSP.SymbolKind.Class:
+      return 'Class';
+    case LSP.SymbolKind.Function:
+      return 'Function';
+    case LSP.SymbolKind.Package:
+      return 'Package';
+    case LSP.SymbolKind.TypeParameter:
+      return 'Type';
+    default:
+      return 'Modelica symbol';
+  }
 }
 
 // Create a connection for the server, using Node's IPC as a transport.

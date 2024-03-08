@@ -18,6 +18,10 @@ features:
 
     ![Outline](images/outline_demo.png)
 
+  - Hover provider for declared symbols.
+
+    ![Hover](images/hover_demo.png)
+
 ## Installation
 
 ### Via Marketplace

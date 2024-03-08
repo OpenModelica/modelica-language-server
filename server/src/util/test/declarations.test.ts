@@ -58,7 +58,7 @@ describe('nodeToSymbolInformation', () => {
   const tree = parser.parse("type Temperature = Real(unit = \"K \");");
 
   const classNode = tree.rootNode.childForFieldName('storedDefinitions')!.childForFieldName('classDefinition')!;
-  const symbol = nodeToSymbolInformation(classNode, "file.mo");
+  const symbol = nodeToSymbolInformation({node: classNode, uri: "file.mo"});
 
   assert.equal(symbol?.name, 'Temperature');
   assert.equal(symbol?.kind, LSP.SymbolKind.TypeParameter);
