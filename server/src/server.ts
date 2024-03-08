@@ -130,7 +130,6 @@ export class ModelicaServer {
 
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
     connection.onHover(this.onHover.bind(this));
-    logger.debug('Event Handlers Registered');
 
     connection.onInitialized(async () => {
       initialized = true;
@@ -142,24 +141,8 @@ export class ModelicaServer {
     });
   }
 
-
   private async analyzeDocument(document: TextDocument) {
-    const diagnostics = this.analyzer.analyze({document});
-  }
-
-  private logRequest({
-    request,
-    params,
-    word,
-  }: {
-    request: string
-    params: LSP.ReferenceParams | LSP.TextDocumentPositionParams
-    word?: string | null
-  }) {
-    const wordLog = word ? `"${word}"` : 'null';
-    logger.debug(
-      `${request} ${params.position.line}:${params.position.character} word=${wordLog}`,
-    );
+    const diagnostics = this.analyzer.analyze(document);
   }
 
   private getCommentForSymbol({
@@ -196,38 +179,41 @@ export class ModelicaServer {
   /**
    * Provide symbols defined in document.
    *
-   * @param params  Unused.
-   * @returns       Symbol information.
+   * @param symbolParams  Document symbols of given text document.
+   * @returns             Symbol information.
    */
-  private onDocumentSymbol(params: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
+  private onDocumentSymbol(symbolParams: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
     // TODO: ideally this should return LSP.DocumentSymbol[] instead of LSP.SymbolInformation[]
     // which is a hierarchy of symbols.
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
     logger.debug(`onDocumentSymbol`);
-    return this.analyzer.getDeclarationsForUri(params.textDocument.uri);
+    return this.analyzer.getDeclarationsForUri(symbolParams.textDocument.uri);
   }
 
+  /**
+   * Provide hover information at given text document position.
+   *
+   * @param position  Text document position.
+   * @returns         Hover information.
+   */
   private async onHover(
-    params: LSP.TextDocumentPositionParams,
+    position: LSP.TextDocumentPositionParams
   ): Promise<LSP.Hover | null> {
-    const word = this.analyzer.wordAtPointFromTextPosition(params);
-    const currentUri = params.textDocument.uri;
-    logger.debug('------------');
-    this.logRequest({ request: 'onHover init', params, word });
+    logger.debug('onHover');
 
-    if (!word) {
+    const identifier = this.analyzer.identFromTextPosition(position);
+    if (identifier === null) {
       return null;
     }
 
-    const symbolsMatchingWord = this.analyzer.findDeclarationsMatchingWord({
-      exactMatch: true,
-      uri: currentUri,
-      word,
-      position: params.position,
+    const symbolsMatchingWord = this.analyzer.findDeclarationsMatchingIdent({
+      uri: position.textDocument.uri,
+      position: position.position,
+      identifier,
     });
     logger.debug('symbolsMatchingWord: ', symbolsMatchingWord);
 
-    const hoverInfo = this.analyzer.hoverInformations(currentUri, params.position);
+    const hoverInfo = this.analyzer.hoverInformation(position.textDocument.uri, position.position);
 
     if (hoverInfo) {
       logger.debug('Documentation: ', hoverInfo);

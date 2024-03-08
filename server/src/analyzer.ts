@@ -67,7 +67,7 @@ export default class Analyzer {
     this.parser = parser;
   }
 
-  public analyze({document}: {document: TextDocument}): LSP.Diagnostic[] {
+  public analyze(document: TextDocument): LSP.Diagnostic[] {
     logger.debug('analyze:');
 
     const diagnostics: LSP.Diagnostic[] = [];
@@ -106,28 +106,21 @@ export default class Analyzer {
   }
 
   /**
-   * Find declarations for the given word and position.
+   * Find all declarations for given identifier reachable from position.
    */
-  public findDeclarationsMatchingWord({
-    exactMatch,
-    position,
+  public findDeclarationsMatchingIdent({
     uri,
-    word,
+    position,
+    identifier
   }: {
-    exactMatch: boolean
-    position: LSP.Position
     uri: string
-    word: string
+    position: LSP.Position
+    identifier: string
   }): LSP.SymbolInformation[] {
     logger.debug('Finding Declarations Matching Word...');
     return this.getAllDeclarations({ uri, position }).filter((symbol) => {
-      if (exactMatch) {
-        logger.debug('name === word');
-        return symbol.name === word;
-      } else {
-        logger.debug('name.startsWith(word)');
-        return symbol.name.startsWith(word);
-      }
+      logger.debug('name === word');
+      return symbol.name === identifier;
     });
   }
 
@@ -143,9 +136,7 @@ export default class Analyzer {
         try {
           logger.debug(`Analyzing file not covered by background analysis ${uri}`);
           const fileContent = fs.readFileSync(new URL(uri), 'utf8');
-          this.analyze({
-            document: TextDocument.create(uri, 'modelica', 1, fileContent),
-          });
+          this.analyze(TextDocument.create(uri, 'modelica', 1, fileContent));
         } catch (err) {
           logger.warn(`Error while analyzing file ${uri}: ${err}`);
           return false;
@@ -281,30 +272,42 @@ export default class Analyzer {
   }
 
   /**
- * Find the full word at the given point.
- */
-  public wordAtPoint(uri: string, line: number, column: number): string | null {
-    const node = this.nodeAtPoint(uri, line, column);
+   * Return identifier at given text position.
+   *
+   * Checks if a node of type identifier exists at given position and return
+   * text.
+   *
+   * @param params  Text document position.
+   * @returns       String with identifier or null on failure.
+   */
+  public identFromTextPosition(
+    params: LSP.TextDocumentPositionParams,
+  ): string | null {
+
+    const node = this.nodeAtPoint(
+      params.textDocument.uri,
+      params.position.line,
+      params.position.character);
 
     if (!node || node.childCount > 0 || node.text.trim() === '') {
+      return null;
+    }
+
+    // Filter for identifier
+    if (node.type !== "IDENT") {
       return null;
     }
 
     return node.text.trim();
   }
 
-  public wordAtPointFromTextPosition(
-    params: LSP.TextDocumentPositionParams,
-  ): string | null {
-    return this.wordAtPoint(
-      params.textDocument.uri,
-      params.position.line,
-      params.position.character,
-    );
-  }
-
   /**
-   * Find the node at the given point.
+   * Return abstract syntax tree node representing text position.
+   *
+   * @param uri
+   * @param line
+   * @param column
+   * @returns       Node matching position.
    */
   private nodeAtPoint(
     uri: string,
@@ -321,7 +324,7 @@ export default class Analyzer {
     return tree.rootNode.descendantForPosition({ row: line, column });
   }
 
-  public hoverInformations(
+  public hoverInformation(
     uri: string,
     position: LSP.Position
     ): string {

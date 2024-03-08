@@ -11,7 +11,6 @@ import { logger } from './logger';
  * @returns Text of the description_string or string saying there is no description.
  */
 export function extractHoverInformation(targetNode: SyntaxNode): string {
-
     // Find the parent class_definition node.
     const classDefNode = TreeSitterUtil.findParent(targetNode, n => n.type === 'class_definition');
 
