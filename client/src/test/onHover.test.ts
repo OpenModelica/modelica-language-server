@@ -65,23 +65,6 @@ async function testOnHover(
   assertHoverInstancesEqual(expectedHoverInstances, actualHoverInstances);
 }
 
-// Function to print the Hover class
-function printHoverInstances(
-  hover: vscode.Hover
-) {
-  for (const content of hover.contents) {
-    if (content instanceof vscode.MarkdownString) {
-      printMarkdownString(content);
-    }
-  }
-}
-
-function printMarkdownString(
-  markdownString: vscode.MarkdownString
-) {
-  console.log(markdownString.value);
-}
-
 function assertHoverInstancesEqual(expected: vscode.Hover[], actual: vscode.Hover[]) {
   assert.strictEqual(expected.length, actual.length, 'Array lengths do not match.');
 
@@ -105,6 +88,6 @@ function assertHoverInstancesEqual(expected: vscode.Hover[], actual: vscode.Hove
       }
     }
 
-    assert.strictEqual(actualContent, expectedContent, `Content does not match expected content.`);
+    assert.strictEqual(actualContent.trim(), expectedContent.trim(), `Content does not match expected content.`);
   }
 }

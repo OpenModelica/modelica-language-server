@@ -4,110 +4,178 @@ import * as LSP from 'vscode-languageserver';
 import { logger } from './logger';
 
 /**
- * Extracts hover information for a Modelica class or package.
+ * Extracts hover information for given node.
  *
- * @param rootNode The root node of the AST for the current document.
- * @param position The position of the cursor in the document.
- * @returns Text of the description_string or string saying there is no description.
+ * Documentation and information for class description, inputs, outputs and
+ * parameters.
+ *
+ * @param node Syntax Node.
+ *
+ * @returns Hover content or null if no information available.
  */
-export function extractHoverInformation(targetNode: SyntaxNode): string {
+export function extractHoverInformation(node: SyntaxNode): string | null {
     // Find the parent class_definition node.
-    const classDefNode = TreeSitterUtil.findParent(targetNode, n => n.type === 'class_definition');
-
+    const classDefNode = TreeSitterUtil.findParent(node, n => n.type === 'class_definition');
     if (!classDefNode) {
-        logger.debug('No class definition found.');
-        return '';
+        logger.debug('extractHoverInformation: No class definition found.');
+        return null;
     }
 
-    // Check if the targetNode is the first IDENT child of the class_definition, indicating it's the class name.
-    const isClassName = classDefNode.namedChildren.some((child, index) =>
-    child.type === 'long_class_specifier' &&
-    child.firstChild?.type === 'IDENT' &&
-    child.firstChild?.text === targetNode.text);
+    // Check if node is the first IDENT child of the class_definition, indicating it's the class name.
+    const isClassName = classDefNode.namedChildren.some((child, _) =>
+      child.type === 'long_class_specifier' &&
+      child.firstChild?.type === 'IDENT' &&
+      child.firstChild?.text === node.text);
 
     if (!isClassName) {
-      logger.debug('Target node is not the class name identifier.');
-      return '';
+      logger.debug('extractHoverInformation: Target node is not the class name identifier.');
+      return null;
     }
 
     const classDescription = extractClassDescription(classDefNode);
-    const inputInformation = extractInputInformation(classDefNode);
-    const outputInformation = extractOutputInformation(classDefNode);
-    const parameterInformation = extractParameterInformation(classDefNode);
+    const {inputsInfo, outputsInfo, parameterInfo, parameterInputsInfo, parameterOutputsInfo} = extractComponentInformation(classDefNode);
 
-    return `${classDescription} ${parameterInformation} ${inputInformation} ${outputInformation}`;
+    return [
+      '```modelica',
+      TreeSitterUtil.getClassPrefixes(classDefNode) + ' ' + node.text + ' ' + classDescription,
+      '```',
+      '---',
+      inputsInfo,
+      parameterInputsInfo,
+      outputsInfo,
+      parameterOutputsInfo,
+      parameterInfo
+    ].join('\n');
 }
 
-function extractClassDescription(classDefNode: SyntaxNode): string {
-  const descriptionNode = TreeSitterUtil.findFirst(classDefNode, n => n.type === 'description_string');
-  const descriptionText = descriptionNode ? descriptionNode.firstChild?.text : null;
+/**
+ * Extract description string from class node.
+ *
+ * @param node  Syntax node.
+ * @returns     Description string or undefined.
+ */
+function extractClassDescription(node: SyntaxNode): string | undefined {
+  const descriptionNode = TreeSitterUtil.findFirst(
+    node,
+    n => n.type === 'description_string');
 
-  return descriptionText ? `\n${descriptionText}` : '';
+  return descriptionNode?.firstChild?.text;
 }
 
-function extractInputInformation(classDefNode: SyntaxNode): string {
+function extractComponentInformation(
+  classDefNode: SyntaxNode): {
+    inputsInfo: string | undefined;
+    outputsInfo: string | undefined;
+    parameterInfo: string | undefined;
+    parameterInputsInfo: string | undefined;
+    parameterOutputsInfo: string | undefined;
+  } {
+
   const inputsInfo: string[] = [];
+  const outputsInfo: string[] = [];
+  const parameterInfo: string[] = [];
+  const parameterInputsInfo: string[] = [];
+  const parameterOutputsInfo: string[] = [];
+  let inputsString: string | undefined = undefined;
+  let outputsString: string | undefined = undefined;
+  let parameterString: string | undefined = undefined;
+  let parameterInputsString: string | undefined = undefined;
+  let parameterOutputsString: string | undefined = undefined;
 
   TreeSitterUtil.forEach(classDefNode, (node) => {
+    if (node.type === 'component_clause') {
+      const prefix = TreeSitterUtil.getPrefix(node);
+      const isParameter = TreeSitterUtil.isParameter(node);
+      if (prefix !== undefined || isParameter) {
+        const typeSpecifierNode = node.childForFieldName('typeSpecifier');
+        const typeSpecifier = typeSpecifierNode ? typeSpecifierNode.text : "Unknown Type";
 
-      if (node.type === 'component_clause' && node.text.includes('input')) {
+        const componentDeclarationNode = node.childForFieldName('componentDeclarations');
+        const declarationNode = componentDeclarationNode?.firstChild?.childForFieldName('declaration');
+        const identifier = declarationNode ? declarationNode.text : "Unknown Identifier";
 
-          const typeSpecifierNode = node.childForFieldName('typeSpecifier');
-          logger.debug(`Type specifier node: ${typeSpecifierNode}`);
-          const typeSpecifier = typeSpecifierNode ? typeSpecifierNode.text : "Unknown Type";
+        // Extracting description from description_string node
+        const descriptionNode = componentDeclarationNode?.firstChild?.childForFieldName('descriptionString');
+        const description = descriptionNode ? descriptionNode.text : '';
 
-          const componentDeclarationNode = node.childForFieldName('componentDeclarations');
+        const info = [
+          isParameter ? 'parameter' : undefined,
+          prefix,
+          typeSpecifier,
+          identifier,
+          description
+        ].filter( (e) => e !== undefined ).join(' ') + ';';
 
-          const declarationNode = componentDeclarationNode?.firstChild?.childForFieldName('declaration');
-          logger.debug(`Declaration node: ${declarationNode}`);
-          const identifier = declarationNode ? declarationNode.text : "Unknown Identifier";
-
-          // Extracting description from description_string node
-          const descriptionNode = componentDeclarationNode?.firstChild?.childForFieldName('descriptionString');
-          const description = descriptionNode ? descriptionNode.text : '';
-
-          inputsInfo.push(`${typeSpecifier} ${identifier} ${description}\n`);
+        if (prefix === 'input') {
+          if (isParameter) {
+            parameterInputsInfo.push(info);
+          } else {
+            inputsInfo.push(info);
+          }
+        }
+        if (prefix === 'output') {
+          if (isParameter) {
+            parameterOutputsInfo.push(info);
+          } else {
+            outputsInfo.push(info);
+          }
+        }
+        if (isParameter) {
+          parameterInfo.push(info);
+        }
       }
-      return true;
+    }
+    return true;
   });
 
   if (inputsInfo.length > 0) {
-    return "\n## Inputs:\n" + inputsInfo.join('\n');
+    inputsString = [
+      '**Inputs**',
+      '```modelica',
+      inputsInfo.join('\n'),
+      '```'
+    ].join('\n');
   }
-
-  return '';
-}
-
-function extractOutputInformation(classDefNode: SyntaxNode): string {
-  const outputsInfo: string[] = [];
-
-  TreeSitterUtil.forEach(classDefNode, (node) => {
-
-      if (node.type === 'component_clause' && node.text.includes('output')) {
-
-          const typeSpecifierNode = node.childForFieldName('typeSpecifier');
-          logger.debug(`Type specifier node: ${typeSpecifierNode}`);
-          const typeSpecifier = typeSpecifierNode ? typeSpecifierNode.text : "Unknown Type";
-
-          const componentDeclarationNode = node.childForFieldName('componentDeclarations');
-
-          const declarationNode = componentDeclarationNode?.firstChild?.childForFieldName('declaration');
-          logger.debug(`Declaration node: ${declarationNode}`);
-          const identifier = declarationNode ? declarationNode.text : "Unknown Identifier";
-
-          // Extracting description from description_string node
-          const descriptionNode = componentDeclarationNode?.firstChild?.childForFieldName('descriptionString');
-          const description = descriptionNode ? descriptionNode.text : '';
-
-          outputsInfo.push(`${typeSpecifier} ${identifier} ${description}\n`);
-      }
-      return true;
-  });
-
+  if (parameterInputsInfo.length > 0) {
+    parameterInputsString = [
+      '**Parameter Inputs**',
+      '```modelica',
+      parameterInputsInfo.join('\n'),
+      '```'
+    ].join('\n');
+  }
   if (outputsInfo.length > 0) {
-      return "\n## Outputs:\n" + outputsInfo.join('\n');
+    outputsString = [
+      '**Outputs**',
+      '```modelica',
+      outputsInfo.join('\n'),
+      '```'
+    ].join('\n');
   }
-  return '';
+  if (parameterOutputsInfo.length > 0) {
+    parameterOutputsString = [
+      '**Parameter Outputs**',
+      '```modelica',
+      parameterOutputsInfo.join('\n'),
+      '```'
+    ].join('\n');
+  }
+  if (parameterInfo.length > 0) {
+    parameterString = [
+      '**Parameter**',
+      '```modelica',
+      parameterInfo.join('\n'),
+      '```'
+    ].join('\n');
+  }
+
+  return {
+    inputsInfo: inputsString,
+    outputsInfo: outputsString,
+    parameterInfo: parameterString,
+    parameterInputsInfo: parameterInputsString,
+    parameterOutputsInfo: parameterOutputsString,
+  };
 }
 
 function extractParameterInformation(classDefNode: SyntaxNode): string {

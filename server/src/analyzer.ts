@@ -50,7 +50,6 @@ import {
 } from './util/declarations';
 import { logger } from './util/logger';
 import { log } from 'console';
-import { extractHoverInformation } from './util/hoverUtil';
 
 type AnalyzedDocument = {
   document: TextDocument,
@@ -201,17 +200,16 @@ export default class Analyzer {
   }
 
   /**
-   * Return identifier at given text position.
+   * Return IDENT node from given text position.
    *
-   * Checks if a node of type identifier exists at given position and return
-   * text.
+   * Check if a node of type identifier exists at given position and return it.
    *
    * @param params  Text document position.
-   * @returns       String with identifier or null on failure.
+   * @returns       Identifier syntax node.
    */
-  public identFromTextPosition(
+  public NodeFromTextPosition(
     params: LSP.TextDocumentPositionParams,
-  ): string | null {
+  ): Parser.SyntaxNode | null {
 
     const node = this.nodeAtPoint(
       params.textDocument.uri,
@@ -227,7 +225,7 @@ export default class Analyzer {
       return null;
     }
 
-    return node.text.trim();
+    return node;
   }
 
   /**
@@ -252,16 +250,4 @@ export default class Analyzer {
 
     return tree.rootNode.descendantForPosition({ row: line, column });
   }
-
-  public hoverInformation(
-    uri: string,
-    position: LSP.Position
-    ): string {
-      const targetNode = this.nodeAtPoint(uri, position.line, position.character);
-      if (!targetNode) {
-          logger.debug('No target node found.');
-          return '';
-      }
-      return extractHoverInformation(targetNode);
-    }
 }

@@ -125,6 +125,49 @@ export function isDefinition(n: SyntaxNode): boolean {
   }
 }
 
+/*
+        component_clause: $ => seq(
+            optional(choice(field("flow", "flow"), field("stream", "stream"))),
+            optional(choice(field("constant", "constant"), field("discrete", "discrete"), field("parameter", "parameter"))),
+            optional(choice(field("input", "input"), field("output", "output"))),
+            field("typeSpecifier", $.type_specifier),
+            optional(field("subscripts", $.array_subscripts)),
+            field("componentDeclarations", $.component_list)
+        ),
+*/
+
+/**
+ * Get input/output prefix from node.
+ *
+ * @param n Node of tree
+ * @returns Base prefix or undefined.
+ */
+export function getPrefix(n: SyntaxNode): string | undefined {
+  switch (n.type) {
+    case 'short_class_specifier':
+      return n.childForFieldName('basePrefix')?.text;
+    case 'component_clause':
+      return n.childForFieldName('input')?.text || n.childForFieldName('output')?.text;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Check if node is parameter.
+ *
+ * @param n Node of tree
+ * @returns True if node has parameter keyword.
+ */
+export function isParameter(n: SyntaxNode): boolean {
+  switch (n.type) {
+    case 'component_clause':
+      return n.childForFieldName('parameter') !== null;
+    default:
+      return false;
+  }
+}
+
 export function findParent(
   start: SyntaxNode,
   predicate: (n: SyntaxNode) => boolean,

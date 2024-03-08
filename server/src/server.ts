@@ -45,8 +45,9 @@ import { TextDocument} from 'vscode-languageserver-textdocument';
 
 import { initializeParser } from './parser';
 import Analyzer from './analyzer';
-import { logger, setLogConnection, setLogLevel } from './util/logger';
 import { uniqueBasedOnHash } from './util/array';
+import { extractHoverInformation } from './util/hoverUtil';
+import { logger, setLogConnection, setLogLevel } from './util/logger';
 
 /**
  * ModelicaServer collection all the important bits and bobs.
@@ -201,22 +202,35 @@ export class ModelicaServer {
   ): Promise<LSP.Hover | null> {
     logger.debug('onHover');
 
-    const identifier = this.analyzer.identFromTextPosition(position);
-    if (identifier === null) {
+    const node = this.analyzer.NodeFromTextPosition(position);
+    if (node === null) {
       return null;
     }
 
-    const symbolsMatchingWord = this.analyzer.getReachableDefinitions(position.textDocument.uri, position.position, identifier);
+    const identifier = node.text.trim();
+    const symbolsMatchingWord = this.analyzer.getReachableDefinitions(
+      position.textDocument.uri,
+      position.position,
+      identifier);
     logger.debug('symbolsMatchingWord: ', symbolsMatchingWord);
-
-    const hoverInfo = this.analyzer.hoverInformation(position.textDocument.uri, position.position);
-
-    if (hoverInfo) {
-      logger.debug('Documentation: ', hoverInfo);
-      return { contents: getMarkdownContent(hoverInfo) };
+    if (symbolsMatchingWord.length == 0) {
+      return null;
     }
 
-    return null;
+    const hoverInfo = extractHoverInformation(node);
+    if (hoverInfo == null) {
+      return null;
+    }
+    logger.debug(hoverInfo);
+
+    const markdown : LSP.MarkupContent = {
+      kind: LSP.MarkupKind.Markdown,
+      value: hoverInfo
+    };
+
+    return {
+      contents: markdown
+    } as LSP.Hover;
   }
 }
 
@@ -265,16 +279,6 @@ function symbolKindToDescription(kind: LSP.SymbolKind): string {
     default:
       return 'Modelica symbol';
   }
-}
-
-function getMarkdownContent(documentation: string, language?: string): LSP.MarkupContent {
-  return {
-    value: language
-      ? // eslint-disable-next-line prefer-template
-        ['``` ' + language, documentation, '```'].join('\n')
-      : documentation,
-    kind: LSP.MarkupKind.Markdown,
-  };
 }
 
 // Create a connection for the server, using Node's IPC as a transport.
