@@ -32,12 +32,17 @@ export function extractHoverInformation(node: SyntaxNode): string | null {
       return null;
     }
 
-    const classDescription = extractClassDescription(classDefNode);
+    const classDescription = TreeSitterUtil.getDescriptionString(classDefNode);
     const {inputsInfo, outputsInfo, parameterInfo, parameterInputsInfo, parameterOutputsInfo} = extractComponentInformation(classDefNode);
+    const classDefinition = [
+      TreeSitterUtil.getClassPrefixes(classDefNode),
+      node.text,
+      classDescription,
+    ].join(' ').trim();
 
     return [
       '```modelica',
-      TreeSitterUtil.getClassPrefixes(classDefNode) + ' ' + node.text + ' ' + classDescription,
+      classDefinition,
       '```',
       '---',
       inputsInfo,
@@ -46,20 +51,6 @@ export function extractHoverInformation(node: SyntaxNode): string | null {
       parameterOutputsInfo,
       parameterInfo
     ].join('\n');
-}
-
-/**
- * Extract description string from class node.
- *
- * @param node  Syntax node.
- * @returns     Description string or undefined.
- */
-function extractClassDescription(node: SyntaxNode): string | undefined {
-  const descriptionNode = TreeSitterUtil.findFirst(
-    node,
-    n => n.type === 'description_string');
-
-  return descriptionNode?.firstChild?.text;
 }
 
 function extractComponentInformation(

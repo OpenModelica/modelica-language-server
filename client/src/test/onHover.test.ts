@@ -39,15 +39,27 @@ import * as assert from 'assert';
 import { getDocUri, getDocPath, activate } from './helper';
 
 suite('onHover information', async () => {
-  const docUri = getDocUri('step.mo');
-  const position = new vscode.Position(19, 25);
-  const content = new vscode.MarkdownString(
-    fs.readFileSync(getDocPath('output.md'), 'utf-8'));
-  const expectedHoverInstances: vscode.Hover[] = [
-    new vscode.Hover(content)
-  ];
+  test('Step', async () => {
+    const docUri = getDocUri('step.mo');
+    const position = new vscode.Position(19, 25);
+    const content = new vscode.MarkdownString(
+      fs.readFileSync(getDocPath('step.md'), 'utf-8'));
+    const expectedHoverInstances: vscode.Hover[] = [
+      new vscode.Hover(content)
+    ];
 
-  test('onHover()', async () => {
+    await testOnHover(docUri, position, expectedHoverInstances);
+  });
+
+  test('velocityOfSound_ph', async () => {
+    const docUri = getDocUri('velocityOfSound_ph.mo');
+    const position = new vscode.Position(0, 20);
+    const content = new vscode.MarkdownString(
+      fs.readFileSync(getDocPath('velocityOfSound_ph.md'), 'utf-8'));
+    const expectedHoverInstances: vscode.Hover[] = [
+      new vscode.Hover(content)
+    ];
+
     await testOnHover(docUri, position, expectedHoverInstances);
   });
 });

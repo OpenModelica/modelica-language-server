@@ -125,17 +125,6 @@ export function isDefinition(n: SyntaxNode): boolean {
   }
 }
 
-/*
-        component_clause: $ => seq(
-            optional(choice(field("flow", "flow"), field("stream", "stream"))),
-            optional(choice(field("constant", "constant"), field("discrete", "discrete"), field("parameter", "parameter"))),
-            optional(choice(field("input", "input"), field("output", "output"))),
-            field("typeSpecifier", $.type_specifier),
-            optional(field("subscripts", $.array_subscripts)),
-            field("componentDeclarations", $.component_list)
-        ),
-*/
-
 /**
  * Get input/output prefix from node.
  *
@@ -211,4 +200,25 @@ export function getClassPrefixes(node: SyntaxNode): string | null {
   }
 
   return classPrefixNode.text;
+}
+
+/**
+ * Get description string.
+ *
+ * @param node  Syntax node
+ * @returns     Description string of node.
+ */
+export function getDescriptionString(node: SyntaxNode): string | undefined {
+  let classNode: SyntaxNode | null;
+
+  switch (node.type) {
+    case 'class_definition':
+      classNode = node.childForFieldName('classSpecifier');
+      if (classNode !== null) {
+        return getDescriptionString(classNode);
+      }
+      return undefined;
+    default:
+      return node.childForFieldName('descriptionString')?.text;
+  }
 }
