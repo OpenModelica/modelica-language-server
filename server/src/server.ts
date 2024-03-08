@@ -206,11 +206,7 @@ export class ModelicaServer {
       return null;
     }
 
-    const symbolsMatchingWord = this.analyzer.findDeclarationsMatchingIdent({
-      uri: position.textDocument.uri,
-      position: position.position,
-      identifier,
-    });
+    const symbolsMatchingWord = this.analyzer.getReachableDefinitions(position.textDocument.uri, position.position, identifier);
     logger.debug('symbolsMatchingWord: ', symbolsMatchingWord);
 
     const hoverInfo = this.analyzer.hoverInformation(position.textDocument.uri, position.position);

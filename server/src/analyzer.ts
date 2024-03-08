@@ -106,109 +106,38 @@ export default class Analyzer {
   }
 
   /**
-   * Find all declarations for given identifier reachable from position.
+   * Get all reachable definitions matching identifier.
+   *
+   * TODO: All available analyzed documents are searched. Filter for reachable
+   * files and use scope of identifier.
+   *
+   * @param uri         Text document.
+   * @param position    Position of `identifier` in text document.
+   * @param identifier  Identifier name.
+   * @returns           Array of symbol information for `identifier.
    */
-  public findDeclarationsMatchingIdent({
-    uri,
-    position,
-    identifier
-  }: {
-    uri: string
-    position: LSP.Position
-    identifier: string
-  }): LSP.SymbolInformation[] {
-    logger.debug('Finding Declarations Matching Word...');
-    return this.getAllDeclarations({ uri, position }).filter((symbol) => {
-      logger.debug('name === word');
-      return symbol.name === identifier;
-    });
-  }
+  public getReachableDefinitions(
+    uri: string,
+    position: LSP.Position,
+    identifier: string): LSP.SymbolInformation[] {
 
-  private getAnalyzedReachableUris({ fromUri }: { fromUri?: string } = {}): string[] {
-    return this.ensureUrisAreAnalyzed(this.getReachableUris({ fromUri }));
-  }
+    const declarations:LSP.SymbolInformation[] = [];
 
-  private ensureUrisAreAnalyzed(uris: string[]): string[] {
-    return uris.filter((uri) => {
-      if (!this.uriToAnalyzedDocument[uri]) {
-        // Either the background analysis didn't run or the file is outside
-        // the workspace. Let us try to analyze the file.
-        try {
-          logger.debug(`Analyzing file not covered by background analysis ${uri}`);
-          const fileContent = fs.readFileSync(new URL(uri), 'utf8');
-          this.analyze(TextDocument.create(uri, 'modelica', 1, fileContent));
-        } catch (err) {
-          logger.warn(`Error while analyzing file ${uri}: ${err}`);
-          return false;
+    // Find all declarations matching identifier.
+    for (const availableUri of Object.keys(this.uriToAnalyzedDocument)) {
+      // TODO: Filter reachable uri, e.g. because of an inclue
+      const decl = this.uriToAnalyzedDocument[availableUri]?.declarations;
+      if (decl) {
+        for (const d of decl) {
+          if (d.name === identifier) {
+            declarations.push(d);
+          }
         }
       }
-
-      return true;
-    });
-  }
-
-  private getReachableUris({ fromUri }: { fromUri?: string } = {}): string[] {
-    if (!fromUri) {
-      return Object.keys(this.uriToAnalyzedDocument);
     }
-    return [fromUri];
-  }
 
-  private getAllDeclarations({
-    uri: fromUri,
-    position,
-  }: { uri?: string; position?: LSP.Position } = {}): LSP.SymbolInformation[] {
-    return this.getAnalyzedReachableUris({ fromUri }).reduce((symbols, uri) => {
-      logger.debug('getAnalyzedReachableUris Initialized');
-      const analyzedDocument = this.uriToAnalyzedDocument[uri];
-
-      if (analyzedDocument) {
-        if (uri !== fromUri || !position) {
-          // TODO: Use the global declarations for external files or if we do not have a position
-        }
-
-        // For the current file we find declarations based on the current scope
-        if (uri === fromUri && position) {
-          const node = analyzedDocument.tree.rootNode?.descendantForPosition({
-            row: position.line,
-            column: position.character,
-          });
-
-          const localDeclarations = getLocalDeclarations({
-            node,
-            rootNode: analyzedDocument.tree.rootNode,
-            uri,
-          });
-          logger.debug('localDeclarations: ', localDeclarations);
-          Object.keys(localDeclarations).map((name) => {
-            const symbolsMatchingWord = localDeclarations[name];
-
-            // Find the latest definition
-            let closestSymbol: LSP.SymbolInformation | null = null;
-            symbolsMatchingWord.forEach((symbol) => {
-              // Skip if the symbol is defined in the current file after the requested position
-              if (symbol.location.range.start.line > position.line) {
-                return;
-              }
-
-              if (
-                closestSymbol === null ||
-                symbol.location.range.start.line > closestSymbol.location.range.start.line
-              ) {
-                closestSymbol = symbol;
-              }
-            });
-
-            if (closestSymbol) {
-              logger.debug('ClosestSymbol: ', closestSymbol);
-              symbols.push(closestSymbol);
-            }
-          });
-        }
-      }
-
-      return symbols;
-    }, [] as LSP.SymbolInformation[]);
+    // TODO: Filter reachable declarations from scope.
+    return declarations;
   }
 
   /**
