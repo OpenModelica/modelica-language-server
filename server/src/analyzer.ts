@@ -39,48 +39,51 @@
  * -----------------------------------------------------------------------------
  */
 
-import * as LSP from 'vscode-languageserver/node';
-import { TextDocument } from 'vscode-languageserver-textdocument';
+import * as LSP from "vscode-languageserver/node";
+import { TextDocument } from "vscode-languageserver-textdocument";
 
-import Parser = require('web-tree-sitter');
+import Parser from "web-tree-sitter";
 
-import {
-  getAllDeclarationsInTree
-} from './util/declarations';
-import { logger } from './util/logger';
+import { getAllDeclarationsInTree } from "./util/declarations";
+import { logger } from "./util/logger";
+import * as TreeSitterUtil from "./util/tree-sitter";
 
 type AnalyzedDocument = {
-  document: TextDocument,
-  declarations: LSP.SymbolInformation[],
-  tree: Parser.Tree
-}
+  uri: string;
+  fileContent: string;
+  declarations: LSP.SymbolInformation[];
+  tree: Parser.Tree;
+};
 
 export default class Analyzer {
   private parser: Parser;
-  private uriToAnalyzedDocument: Record<string, AnalyzedDocument | undefined> = {};
+  private uriToAnalyzedDocument: Record<string, AnalyzedDocument | undefined> =
+    {};
 
-  constructor (parser: Parser) {
+  constructor(parser: Parser) {
     this.parser = parser;
   }
 
-  public analyze(document: TextDocument): LSP.Diagnostic[] {
-    logger.debug('analyze:');
+  public analyze(uri: string, fileContent: string): LSP.Diagnostic[] {
+    logger.debug(`analyze '${uri}':`);
 
     const diagnostics: LSP.Diagnostic[] = [];
-    const fileContent = document.getText();
-    const uri = document.uri;
-
     const tree = this.parser.parse(fileContent);
-    logger.debug(tree.rootNode.toString());
+    //logger.debug(tree.rootNode.toString());
 
     // Get declarations
     const declarations = getAllDeclarationsInTree(tree, uri);
 
+    // Analyze imported modules if necessary
+    this.resolveImports(tree);
+
     // Update saved analysis for document uri
+    // TODO: do we even need fileContent?
     this.uriToAnalyzedDocument[uri] = {
-      document,
+      uri,
+      fileContent,
       declarations,
-      tree
+      tree,
     };
 
     return diagnostics;
@@ -99,5 +102,26 @@ export default class Analyzer {
     }
 
     return getAllDeclarationsInTree(tree, uri);
+  }
+
+  private resolveImports(tree: Parser.Tree) {
+    // TODO: within statements
+    if (tree.rootNode.firstChild?.type == "within_clause") {
+      const packagePath =
+        tree.rootNode.firstChild.childForFieldName("name")?.text?.split(".") ??
+        [];
+      logger.debug(`within package ${packagePath?.join(".")}`);
+    }
+
+    // // TODO: Find all import statements
+    // TreeSitterUtil.forEach(tree.rootNode, (child) => {
+    //   // TODO: return false if the node is not a class? or can imports be in any block?
+    //   if (child.type == "import_clause") {
+    //     const packagePath = child.childForFieldName("name")!.text.split(".");
+    //     packagePath.pop();
+
+    //     this.analyzePackage(packagePath);
+    //   }
+    // });
   }
 }

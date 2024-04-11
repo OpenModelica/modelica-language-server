@@ -39,55 +39,68 @@
  * -----------------------------------------------------------------------------
  */
 
-import * as LSP from 'vscode-languageserver/node';
-import { TextDocument} from 'vscode-languageserver-textdocument';
+import * as LSP from "vscode-languageserver/node";
+import { TextDocument } from "vscode-languageserver-textdocument";
+import * as fsWalk from "@nodelib/fs.walk";
+import * as fs from "node:fs/promises";
+import * as util from "node:util";
+import * as url from "node:url";
 
-import { initializeParser } from './parser';
-import Analyzer from './analyzer';
-import { logger, setLogConnection, setLogLevel } from './util/logger';
+import { initializeParser } from "./parser";
+import Analyzer from "./analyzer";
+import { logger, setLogConnection, setLogLevel } from "./util/logger";
 
 /**
  * ModelicaServer collection all the important bits and bobs.
  */
 export class ModelicaServer {
-  analyzer: Analyzer;
+  private analyzer: Analyzer;
   private clientCapabilities: LSP.ClientCapabilities;
+  private workspaceFolders: LSP.WorkspaceFolder[] | null | undefined;
   private connection: LSP.Connection;
-  private documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(TextDocument);
+  private documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(
+    TextDocument
+  );
 
   private constructor(
     analyzer: Analyzer,
     clientCapabilities: LSP.ClientCapabilities,
+    workspaceFolders: LSP.WorkspaceFolder[] | null | undefined,
     connection: LSP.Connection
   ) {
     this.analyzer = analyzer;
     this.clientCapabilities = clientCapabilities;
+    this.workspaceFolders = workspaceFolders;
     this.connection = connection;
   }
 
   public static async initialize(
     connection: LSP.Connection,
-    { capabilities }: LSP.InitializeParams,
+    initializeParams: LSP.InitializeParams
   ): Promise<ModelicaServer> {
-
     // Initialize logger
     setLogConnection(connection);
-    setLogLevel('debug');
-    logger.debug('Initializing...');
+    setLogLevel("debug");
+    logger.debug("Initializing...");
 
     const parser = await initializeParser();
     const analyzer = new Analyzer(parser);
 
-    const server = new ModelicaServer(analyzer, capabilities, connection);
+    const server = new ModelicaServer(
+      analyzer,
+      initializeParams.capabilities,
+      initializeParams.workspaceFolders,
+      connection
+    );
 
-    logger.debug('Initialized');
+    logger.debug("Initialized");
     return server;
   }
 
   /**
    * Return what parts of the language server protocol are supported by ModelicaServer.
    */
-  public capabilities(): LSP.ServerCapabilities {
+  public get capabilities(): LSP.ServerCapabilities {
     return {
       textDocumentSync: LSP.TextDocumentSyncKind.Full,
       completionProvider: undefined,
@@ -95,12 +108,11 @@ export class ModelicaServer {
       signatureHelpProvider: undefined,
       documentSymbolProvider: true,
       colorProvider: false,
-      semanticTokensProvider: undefined
+      semanticTokensProvider: undefined,
     };
   }
 
   public register(connection: LSP.Connection): void {
-
     let currentDocument: TextDocument | null = null;
     let initialized = false;
 
@@ -111,18 +123,23 @@ export class ModelicaServer {
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
 
     connection.onInitialized(async () => {
+      logger.debug("onInitialized");
       initialized = true;
-      if (currentDocument) {
-        // If we already have a document, analyze it now that we're initialized
-        // and the linter is ready.
-        this.analyzeDocument(currentDocument);
-      }
+      // if (currentDocument) {
+      //   // If we already have a document, analyze it now that we're initialized
+      //   // and the linter is ready.
+      //   this.analyzeDocument(currentDocument);
+      // }
+
+      // If we opened a project, analyze it now that we're initialized
+      // and the linter is ready.
+      this.analyzeWorkspaceFolders();
     });
 
     // The content of a text document has changed. This event is emitted
     // when the text document first opened or when its content has changed.
     this.documents.onDidChangeContent(({ document }) => {
-      logger.debug('onDidChangeContent');
+      logger.debug("onDidChangeContent");
 
       // We need to define some timing to wait some time or until whitespace is typed
       // to update the tree or we are doing this on every key stroke
@@ -134,9 +151,28 @@ export class ModelicaServer {
     });
   }
 
+  private async analyzeWorkspaceFolders(): Promise<void> {
+    if (!this.workspaceFolders) {
+      return;
+    }
 
-  private async analyzeDocument(document: TextDocument) {
-    const diagnostics = this.analyzer.analyze(document);
+    for (const workspace of this.workspaceFolders) {
+      const walk = util.promisify(fsWalk.walk);
+      const entries = await walk(url.fileURLToPath(workspace.uri), {
+        entryFilter: (entry) => !!entry.name.match(/\.mos?$/),
+      });
+
+      for (const entry of entries) {
+        const diagnostics =  this.analyzer.analyze(
+          entry.path,
+          await fs.readFile(entry.path, "utf-8")
+        );
+      }
+    }
+  }
+
+  private async analyzeDocument(document: TextDocument): Promise<void> {
+    const diagnostics = this.analyzer.analyze(document.uri, document.getText());
   }
 
   /**
@@ -145,14 +181,15 @@ export class ModelicaServer {
    * @param params  Unused.
    * @returns       Symbol information.
    */
-  private onDocumentSymbol(params: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
+  private onDocumentSymbol(
+    params: LSP.DocumentSymbolParams
+  ): LSP.SymbolInformation[] {
     // TODO: ideally this should return LSP.DocumentSymbol[] instead of LSP.SymbolInformation[]
     // which is a hierarchy of symbols.
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
     logger.debug(`onDocumentSymbol`);
     return this.analyzer.getDeclarationsForUri(params.textDocument.uri);
   }
-
 }
 
 // Create a connection for the server, using Node's IPC as a transport.
@@ -164,7 +201,7 @@ connection.onInitialize(
     const server = await ModelicaServer.initialize(connection, params);
     server.register(connection);
     return {
-      capabilities: server.capabilities(),
+      capabilities: server.capabilities,
     };
   }
 );
