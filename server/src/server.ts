@@ -101,6 +101,22 @@ export class ModelicaServer {
    * Return what parts of the language server protocol are supported by ModelicaServer.
    */
   public get capabilities(): LSP.ServerCapabilities {
+    const modelicaFileFilter = {
+      scheme: "file",
+      pattern: {
+        glob: "*.{mo,mos}",
+        matches: LSP.FileOperationPatternKind.file,
+      },
+    };
+
+    const folderFilter = {
+      scheme: "file",
+      pattern: {
+        glob: "*",
+        matches: LSP.FileOperationPatternKind.folder,
+      }
+    };
+
     return {
       textDocumentSync: LSP.TextDocumentSyncKind.Full,
       completionProvider: undefined,
@@ -109,6 +125,23 @@ export class ModelicaServer {
       documentSymbolProvider: true,
       colorProvider: false,
       semanticTokensProvider: undefined,
+      workspace: {
+        workspaceFolders: {
+          supported: true,
+          changeNotifications: true,
+        },
+        fileOperations: {
+          didCreate: {
+            filters: [modelicaFileFilter]
+          },
+          didRename: {
+            filters: [modelicaFileFilter /*, folderFilter*/]
+          },
+          didDelete: {
+            filters: [modelicaFileFilter /*, folderFilter*/],
+          },
+        },
+      },
     };
   }
 
@@ -134,6 +167,29 @@ export class ModelicaServer {
       // If we opened a project, analyze it now that we're initialized
       // and the linter is ready.
       this.analyzeWorkspaceFolders();
+    });
+
+    connection.workspace.onDidCreateFiles(async (params) => {
+      for (const file of params.files) {
+        this.analyzer.analyze(file.uri, await fs.readFile(file.uri, "utf-8"));
+      }
+    });
+
+    connection.workspace.onDidRenameFiles(async (params) => {
+      for (const file of params.files) {
+        // ...or maybe just analyzer.renameDocument, depending on uh if oldUri and newUri are always in the same folder?
+        this.analyzer.removeDocument(file.oldUri);
+        this.analyzer.analyze(
+          file.newUri,
+          await fs.readFile(file.newUri, "utf-8")
+        );
+      }
+    });
+
+    connection.workspace.onDidDeleteFiles(async (params) => {
+      for (const file of params.files) {
+        this.analyzer.removeDocument(file.uri);
+      }
     });
 
     // The content of a text document has changed. This event is emitted
@@ -163,7 +219,7 @@ export class ModelicaServer {
       });
 
       for (const entry of entries) {
-        const diagnostics =  this.analyzer.analyze(
+        const diagnostics = this.analyzer.analyze(
           entry.path,
           await fs.readFile(entry.path, "utf-8")
         );

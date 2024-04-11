@@ -60,7 +60,7 @@ export default class Analyzer {
   private uriToAnalyzedDocument: Record<string, AnalyzedDocument | undefined> =
     {};
 
-  constructor(parser: Parser) {
+  public constructor(parser: Parser) {
     this.parser = parser;
   }
 
@@ -89,6 +89,10 @@ export default class Analyzer {
     return diagnostics;
   }
 
+  public removeDocument(uri: string): void {
+    delete this.uriToAnalyzedDocument[uri];
+  }
+
   /**
    * Get all symbol declarations in the given file. This is used for generating an outline.
    *
@@ -104,7 +108,7 @@ export default class Analyzer {
     return getAllDeclarationsInTree(tree, uri);
   }
 
-  private resolveImports(tree: Parser.Tree) {
+  private resolveImports(tree: Parser.Tree): void {
     // TODO: within statements
     if (tree.rootNode.firstChild?.type == "within_clause") {
       const packagePath =
