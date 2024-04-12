@@ -41,8 +41,12 @@
 
 import * as LSP from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import findCacheDirectory from "find-cache-dir";
 
 import Parser from "web-tree-sitter";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import * as url from "node:url";
 
 import { getAllDeclarationsInTree } from "./util/declarations";
 import { logger } from "./util/logger";
@@ -50,21 +54,47 @@ import * as TreeSitterUtil from "./util/tree-sitter";
 
 type AnalyzedDocument = {
   uri: string;
-  fileContent: string;
+  lastAnalyzed: Date,
   declarations: LSP.SymbolInformation[];
   tree: Parser.Tree;
 };
 
+const cacheBaseDir = findCacheDirectory({
+  name: "modelica-language-server",
+  create: true
+});
+
 export default class Analyzer {
   private parser: Parser;
+  private workspaceFolders: LSP.WorkspaceFolder[] | null | undefined;
   private uriToAnalyzedDocument: Record<string, AnalyzedDocument | undefined> =
     {};
 
-  public constructor(parser: Parser) {
+  public constructor(parser: Parser, workspaceFolders?: LSP.WorkspaceFolder[] | null) {
     this.parser = parser;
+    this.workspaceFolders = workspaceFolders;
   }
 
-  public analyze(uri: string, fileContent: string): LSP.Diagnostic[] {
+  /**
+   * Analyzes a file.
+   *
+   * @param uri uri to file to analyze
+   * @param fileContent the updated content of the file
+   * @param lastModified the last time the file was changed. undefined == now.
+   * @returns diagnostics for the file
+   */
+  public analyze(uri: string, fileContent: string, lastModified?: Date): LSP.Diagnostic[] {
+    // TODO: determine if the file needs to be reanalyzed or not
+    // (it might have been cached)
+    // We will need the lastModified time for the file.
+    const oldDocument = this.uriToAnalyzedDocument[uri];
+    if (oldDocument && lastModified && oldDocument.lastAnalyzed >= lastModified) {
+      logger.debug(`skipping: ${uri}`);
+
+      // TODO: return same diagnostics
+      return [];
+    }
+
     logger.debug(`analyze '${uri}':`);
 
     const diagnostics: LSP.Diagnostic[] = [];
@@ -78,7 +108,7 @@ export default class Analyzer {
     // TODO: do we even need fileContent?
     this.uriToAnalyzedDocument[uri] = {
       uri,
-      fileContent,
+      lastAnalyzed: new Date(),
       declarations,
       tree,
     };
@@ -103,5 +133,51 @@ export default class Analyzer {
     }
 
     return getAllDeclarationsInTree(tree, uri);
+  }
+
+  public async loadCache(cacheDir: string): Promise<void> {
+    for (const absolutePath in fs.readdir(cacheDir)) {
+      const originalFilePath = decodeURIComponent(path.basename(absolutePath));
+      logger.debug(`loading from cache: ${originalFilePath}`);
+
+      const documentContent = await fs.readFile(originalFilePath);
+      const originalFileUri = url.pathToFileURL(originalFilePath).href;
+      this.uriToAnalyzedDocument[originalFileUri] = JSON.parse(documentContent.toString());
+    }
+  }
+
+  public async saveCache(): Promise<void> {
+    for (const [uri, document] of Object.entries(this.uriToAnalyzedDocument)) {
+      const cacheDir = this.getWorkspaceCacheDir(uri);
+      if (!document || !cacheDir) {
+        continue;
+      }
+
+      const fileStats = await fs.stat(uri);
+      if (document.lastAnalyzed > fileStats.mtime) {
+        logger.debug(`writing to cache: ${uri}`);
+        const cacheFile = path.join(cacheDir, encodeURIComponent(uri));
+        // TODO: is there a faster serialization method?
+        fs.writeFile(cacheFile, JSON.stringify(document));
+      }
+    }
+  }
+
+  private getWorkspaceCacheDir(fileUri: string): string | undefined {
+    if (!this.workspaceFolders) {
+      return undefined;
+    }
+
+    const workspaceFolder = this.workspaceFolders
+      .map(folder => folder.uri)
+      .filter(fileUri.startsWith)
+      .sort((a, b) => b.length - a.length)
+      .at(0);
+
+    if (!cacheBaseDir || !workspaceFolder) {
+      return undefined;
+    }
+
+    return path.join(cacheBaseDir, encodeURIComponent(workspaceFolder));
   }
 }

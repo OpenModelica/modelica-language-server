@@ -41,6 +41,7 @@
 
 import * as LSP from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import findCacheDirectory from "find-cache-dir";
 import * as fsWalk from "@nodelib/fs.walk";
 import * as fs from "node:fs/promises";
 import * as util from "node:util";
@@ -85,7 +86,7 @@ export class ModelicaServer {
     logger.debug("Initializing...");
 
     const parser = await initializeParser();
-    const analyzer = new Analyzer(parser);
+    const analyzer = new Analyzer(parser, initializeParams.workspaceFolders);
 
     const server = new ModelicaServer(
       analyzer,
@@ -126,6 +127,7 @@ export class ModelicaServer {
     // for open, change and close text document events
     this.documents.listen(this.connection);
 
+    connection.onShutdown(this.onShutdown.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
     connection.onInitialized(this.onInitialized.bind(this));
     connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
@@ -165,6 +167,21 @@ export class ModelicaServer {
       this.analyzeWorkspaceFolders();
   }
 
+  private async onShutdown(): Promise<void> {
+    logger.debug("close");
+
+    const cacheDir = findCacheDirectory({
+      name: "modelica-language-server",
+      create: true
+    });
+
+    if (cacheDir) {
+      // TODO: open the file and read it
+      // TODO: determine what needs to be saved
+      await this.analyzer.saveCache();
+    }
+  }
+
   private async analyzeWorkspaceFolders(): Promise<void> {
     if (!this.workspaceFolders) {
       return;
@@ -177,12 +194,16 @@ export class ModelicaServer {
       });
 
       for (const entry of entries) {
+        const stats = await fs.stat(entry.path);
         const diagnostics = this.analyzer.analyze(
-          entry.path,
-          await fs.readFile(entry.path, "utf-8")
+          url.pathToFileURL(entry.path).href,
+          await fs.readFile(entry.path, "utf-8"),
+          stats.mtime
         );
       }
     }
+
+    await this.analyzer.saveCache();
   }
 
   private async analyzeDocument(document: TextDocument): Promise<void> {
