@@ -74,9 +74,6 @@ export default class Analyzer {
     // Get declarations
     const declarations = getAllDeclarationsInTree(tree, uri);
 
-    // Analyze imported modules if necessary
-    this.resolveImports(tree);
-
     // Update saved analysis for document uri
     // TODO: do we even need fileContent?
     this.uriToAnalyzedDocument[uri] = {
@@ -106,26 +103,5 @@ export default class Analyzer {
     }
 
     return getAllDeclarationsInTree(tree, uri);
-  }
-
-  private resolveImports(tree: Parser.Tree): void {
-    // TODO: within statements
-    if (tree.rootNode.firstChild?.type == "within_clause") {
-      const packagePath =
-        tree.rootNode.firstChild.childForFieldName("name")?.text?.split(".") ??
-        [];
-      logger.debug(`within package ${packagePath?.join(".")}`);
-    }
-
-    // // TODO: Find all import statements
-    // TreeSitterUtil.forEach(tree.rootNode, (child) => {
-    //   // TODO: return false if the node is not a class? or can imports be in any block?
-    //   if (child.type == "import_clause") {
-    //     const packagePath = child.childForFieldName("name")!.text.split(".");
-    //     packagePath.pop();
-
-    //     this.analyzePackage(packagePath);
-    //   }
-    // });
   }
 }
