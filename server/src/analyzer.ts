@@ -53,7 +53,7 @@ import { logger } from "./util/logger";
 import * as TreeSitterUtil from "./util/tree-sitter";
 
 type AnalyzedDocument = {
-  uri: string;
+  uri: LSP.DocumentUri;
   lastAnalyzed: Date,
   declarations: LSP.SymbolInformation[];
   tree: Parser.Tree;
@@ -83,7 +83,7 @@ export default class Analyzer {
    * @param lastModified the last time the file was changed. undefined == now.
    * @returns diagnostics for the file
    */
-  public analyze(uri: string, fileContent: string, lastModified?: Date): LSP.Diagnostic[] {
+  public analyze(uri: LSP.DocumentUri, fileContent: string, lastModified?: Date): LSP.Diagnostic[] {
     // TODO: determine if the file needs to be reanalyzed or not
     // (it might have been cached)
     // We will need the lastModified time for the file.
@@ -116,7 +116,7 @@ export default class Analyzer {
     return diagnostics;
   }
 
-  public removeDocument(uri: string): void {
+  public removeDocument(uri: LSP.DocumentUri): void {
     delete this.uriToAnalyzedDocument[uri];
   }
 
@@ -125,7 +125,7 @@ export default class Analyzer {
    *
    * TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found in a given text document.
    */
-  public getDeclarationsForUri(uri: string): LSP.SymbolInformation[] {
+  public getDeclarationsForUri(uri: LSP.DocumentUri): LSP.SymbolInformation[] {
     const tree = this.uriToAnalyzedDocument[uri]?.tree;
 
     if (!tree?.rootNode) {
@@ -133,6 +133,59 @@ export default class Analyzer {
     }
 
     return getAllDeclarationsInTree(tree, uri);
+  }
+
+  public findDeclarationFromPosition(uri: LSP.DocumentUri, line: number, character: number): LSP.Location | undefined {
+    const tree = this.uriToAnalyzedDocument[uri]?.tree;
+    if (!tree?.rootNode) {
+      return undefined;
+    }
+
+    const hoveredNode = this.findSymbol(tree, line, character);
+    if (!hoveredNode) {
+      return undefined;
+    }
+
+    const foundDeclaration = this.findDeclaration(hoveredNode);
+    return {
+      uri,
+      range: {
+        start: {
+          line: foundDeclaration.startPosition.row,
+          character: foundDeclaration.startPosition.column,
+        },
+        end: {
+          line: foundDeclaration.endPosition.row,
+          character: foundDeclaration.endPosition.column,
+        },
+      }
+    };
+  }
+
+  private findDeclaration(symbol: Parser.SyntaxNode): Parser.SyntaxNode {
+    return undefined as any;
+  }
+
+  private findSymbol(tree: Parser.Tree, line: number, character: number): Parser.SyntaxNode | undefined {
+    let hoveredNode: Parser.SyntaxNode | undefined = undefined;
+    TreeSitterUtil.forEach(tree.rootNode, node => {
+      if (hoveredNode) {
+        return false;
+      }
+
+      const isInNode = line >= node.startPosition.row &&
+        line <= node.endPosition.row &&
+        character >= node.startPosition.column &&
+        character <= node.endPosition.column;
+
+      if (node.type == "symbol...?") {
+        hoveredNode = node;
+      }
+
+      return isInNode;
+    });
+
+    return hoveredNode;
   }
 
   public async loadCache(cacheDir: string): Promise<void> {
@@ -163,7 +216,7 @@ export default class Analyzer {
     }
   }
 
-  private getWorkspaceCacheDir(fileUri: string): string | undefined {
+  private getWorkspaceCacheDir(fileUri: LSP.DocumentUri): string | undefined {
     if (!this.workspaceFolders) {
       return undefined;
     }

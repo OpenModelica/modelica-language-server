@@ -40,6 +40,7 @@
  */
 
 import * as LSP from 'vscode-languageserver/node';
+import Parser from 'web-tree-sitter';
 import { SyntaxNode } from 'web-tree-sitter';
 
 import { logger } from './logger';
@@ -168,4 +169,8 @@ export function getClassPrefixes(node: SyntaxNode): string | null {
   }
 
   return classPrefixNode.text;
+}
+
+export function positionToPoint(position: LSP.Position): Parser.Point {
+  return { row: position.line, column: position.character };
 }

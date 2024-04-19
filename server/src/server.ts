@@ -104,13 +104,14 @@ export class ModelicaServer {
    */
   public get capabilities(): LSP.ServerCapabilities {
     return {
-      textDocumentSync: LSP.TextDocumentSyncKind.Full,
+      colorProvider: false,
       completionProvider: undefined,
+      declarationProvider: true,
+      documentSymbolProvider: true,
       hoverProvider: false,
       signatureHelpProvider: undefined,
-      documentSymbolProvider: true,
-      colorProvider: false,
       semanticTokensProvider: undefined,
+      textDocumentSync: LSP.TextDocumentSyncKind.Full,
       workspace: {
         workspaceFolders: {
           supported: true,
@@ -131,6 +132,7 @@ export class ModelicaServer {
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
     connection.onInitialized(this.onInitialized.bind(this));
     connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
+    connection.onDeclaration(this.onDeclaration.bind(this));
 
     // The content of a text document has changed. This event is emitted
     // when the text document first opened or when its content has changed.
@@ -234,6 +236,14 @@ export class ModelicaServer {
         }
       }
     }
+  }
+
+  private onDeclaration(params: LSP.DeclarationParams): LSP.Location | undefined {
+    return this.analyzer.findDeclarationFromPosition(
+      params.textDocument.uri,
+      params.position.line,
+      params.position.character
+    );
   }
 
   /**
