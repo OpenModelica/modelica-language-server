@@ -39,15 +39,15 @@ import { ModelicaProject } from "./project";
 
 export interface ModelicaScope {
   /**
-   * The project that this scope belongs to.   
+   * The project that this scope belongs to.
    */
   project: ModelicaProject;
 
   /**
    * Resolves a symbol reference.
-   * 
+   *
    * @param reference a symbol name, relative to the scope
-   * @returns the symbol, or null if not found in this scope. 
+   * @returns the symbol declaration, or null if not found in this scope.
    */
   resolve(reference: string[]): Promise<LSP.SymbolInformation | null>;
 }

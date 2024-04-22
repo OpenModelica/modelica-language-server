@@ -58,27 +58,22 @@ export class ModelicaServer {
   private initialized = false;
   private analyzer: Analyzer;
   private clientCapabilities: LSP.ClientCapabilities;
-  private workspaceFolders: LSP.WorkspaceFolder[] | null | undefined;
   private connection: LSP.Connection;
-  private documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(
-    TextDocument
-  );
+  private documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(TextDocument);
 
   private constructor(
     analyzer: Analyzer,
     clientCapabilities: LSP.ClientCapabilities,
-    workspaceFolders: LSP.WorkspaceFolder[] | null | undefined,
-    connection: LSP.Connection
+    connection: LSP.Connection,
   ) {
     this.analyzer = analyzer;
     this.clientCapabilities = clientCapabilities;
-    this.workspaceFolders = workspaceFolders;
     this.connection = connection;
   }
 
   public static async initialize(
     connection: LSP.Connection,
-    initializeParams: LSP.InitializeParams
+    { capabilities, workspaceFolders }: LSP.InitializeParams,
   ): Promise<ModelicaServer> {
     // Initialize logger
     setLogConnection(connection);
@@ -86,17 +81,16 @@ export class ModelicaServer {
     logger.debug("Initializing...");
 
     const parser = await initializeParser();
-    const analyzer = new Analyzer(parser, initializeParams.workspaceFolders);
-
-    const server = new ModelicaServer(
-      analyzer,
-      initializeParams.capabilities,
-      initializeParams.workspaceFolders,
-      connection
-    );
+    const analyzer = new Analyzer(parser);
+    if (workspaceFolders != null) {
+      for (const workspace of workspaceFolders) {
+        await analyzer.loadWorkspace(workspace);
+      }
+    }
+    // TODO: add libraries as well
 
     logger.debug("Initialized");
-    return server;
+    return new ModelicaServer(analyzer, capabilities, connection);
   }
 
   /**
@@ -122,8 +116,6 @@ export class ModelicaServer {
   }
 
   public async register(connection: LSP.Connection): Promise<void> {
-    let currentDocument: TextDocument | null = null;
-
     // Make the text document manager listen on the connection
     // for open, change and close text document events
     this.documents.listen(this.connection);
@@ -136,125 +128,79 @@ export class ModelicaServer {
 
     // The content of a text document has changed. This event is emitted
     // when the text document first opened or when its content has changed.
-    this.documents.onDidChangeContent(({ document }) => {
+    this.documents.onDidChangeContent((params) => {
       logger.debug("onDidChangeContent");
 
       // We need to define some timing to wait some time or until whitespace is typed
       // to update the tree or we are doing this on every key stroke
 
-      currentDocument = document;
-      if (this.initialized) {
-        this.analyzeDocument(document);
-      }
+      // TODO: this gives us a document instance managed by this.document
+      //       However, we make our documents ourselves. How do we get that to work?
+      //       Do we just not use the TextDocuments class?
+
+      // TODO: actually reanalyze
     });
   }
 
   private async onInitialized(): Promise<void> {
-      logger.debug("onInitialized");
-      this.initialized = true;
+    logger.debug("onInitialized");
+    this.initialized = true;
 
-      await connection.client.register(
-        new LSP.ProtocolNotificationType("workspace/didChangeWatchedFiles"),
-        {
-          watchers: [
-            {
-              globPattern: "**/*.{mo,mos}",
-            },
-          ],
-        }
-      );
+    await connection.client.register(
+      new LSP.ProtocolNotificationType("workspace/didChangeWatchedFiles"),
+      {
+        watchers: [
+          {
+            globPattern: "**/*.{mo,mos}",
+          },
+        ],
+      },
+    );
 
-      // If we opened a project, analyze it now that we're initialized
-      // and the linter is ready.
-      this.analyzeWorkspaceFolders();
+    // If we opened a project, analyze it now that we're initialized
+    // and the linter is ready.
+
+    // TODO: analysis
   }
 
   private async onShutdown(): Promise<void> {
     logger.debug("close");
-
-    const cacheDir = findCacheDirectory({
-      name: "modelica-language-server",
-      create: true
-    });
-
-    if (cacheDir) {
-      // TODO: open the file and read it
-      // TODO: determine what needs to be saved
-      await this.analyzer.saveCache();
-    }
-  }
-
-  private async analyzeWorkspaceFolders(): Promise<void> {
-    if (!this.workspaceFolders) {
-      return;
-    }
-
-    for (const workspace of this.workspaceFolders) {
-      const walk = util.promisify(fsWalk.walk);
-      const entries = await walk(url.fileURLToPath(workspace.uri), {
-        entryFilter: (entry) => !!entry.name.match(/\.mos?$/),
-      });
-
-      for (const entry of entries) {
-        const stats = await fs.stat(entry.path);
-        const diagnostics = this.analyzer.analyze(
-          url.pathToFileURL(entry.path).href,
-          await fs.readFile(entry.path, "utf-8"),
-          stats.mtime
-        );
-      }
-    }
-
-    await this.analyzer.saveCache();
-  }
-
-  private async analyzeDocument(document: TextDocument): Promise<void> {
-    const diagnostics = this.analyzer.analyze(document.uri, document.getText());
   }
 
   private async onDidChangeWatchedFiles(params: LSP.DidChangeWatchedFilesParams): Promise<void> {
-    logger.debug(
-      "onDidChangeWatchedFiles: " + JSON.stringify(params, undefined, 4)
-    );
+    logger.debug("onDidChangeWatchedFiles: " + JSON.stringify(params, undefined, 4));
 
     for (const change of params.changes) {
       switch (change.type) {
-        case LSP.FileChangeType.Created: {
-          const uri = url.fileURLToPath(change.uri);
-          this.analyzer.analyze(uri, await fs.readFile(uri, "utf-8"));
+        case LSP.FileChangeType.Created:
+          this.analyzer.addDocument(change.uri);
           break;
-        }
         case LSP.FileChangeType.Changed: {
-          const uri = url.fileURLToPath(change.uri);
-          this.analyzer.analyze(uri, await fs.readFile(uri, "utf-8"));
+          // TODO: incremental?
+          const path = url.fileURLToPath(change.uri);
+          const content = await fs.readFile(path, 'utf-8');
+          this.analyzer.updateDocument(change.uri, content);
           break;
         }
         case LSP.FileChangeType.Deleted: {
-          const uri = url.fileURLToPath(change.uri);
-          this.analyzer.removeDocument(uri);
+          this.analyzer.removeDocument(change.uri);
           break;
         }
       }
     }
   }
 
-  private onDeclaration(params: LSP.DeclarationParams): LSP.Location | undefined {
-    return this.analyzer.findDeclarationFromPosition(
+  private async onDeclaration(params: LSP.DeclarationParams): Promise<LSP.Location | undefined> {
+    const symbolInformation = await this.analyzer.findDeclarationFromPosition(
       params.textDocument.uri,
       params.position.line,
-      params.position.character
+      params.position.character,
     );
+
+    return symbolInformation?.location ?? undefined;
   }
 
-  /**
-   * Provide symbols defined in document.
-   *
-   * @param params  Unused.
-   * @returns       Symbol information.
-   */
-  private onDocumentSymbol(
-    params: LSP.DocumentSymbolParams
-  ): LSP.SymbolInformation[] {
+  private onDocumentSymbol(params: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
     // TODO: ideally this should return LSP.DocumentSymbol[] instead of LSP.SymbolInformation[]
     // which is a hierarchy of symbols.
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
@@ -267,15 +213,13 @@ export class ModelicaServer {
 // Also include all preview / proposed LSP features.
 const connection = LSP.createConnection(LSP.ProposedFeatures.all);
 
-connection.onInitialize(
-  async (params: LSP.InitializeParams): Promise<LSP.InitializeResult> => {
-    const server = await ModelicaServer.initialize(connection, params);
-    await server.register(connection);
-    return {
-      capabilities: server.capabilities,
-    };
-  }
-);
+connection.onInitialize(async (params: LSP.InitializeParams): Promise<LSP.InitializeResult> => {
+  const server = await ModelicaServer.initialize(connection, params);
+  await server.register(connection);
+  return {
+    capabilities: server.capabilities,
+  };
+});
 
 // Listen on the connection
 connection.listen();

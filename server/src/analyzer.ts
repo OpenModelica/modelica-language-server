@@ -41,7 +41,6 @@
 
 import * as LSP from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import findCacheDirectory from "find-cache-dir";
 
 import Parser from "web-tree-sitter";
 import * as fs from "node:fs/promises";
@@ -51,73 +50,34 @@ import * as url from "node:url";
 import { getAllDeclarationsInTree } from "./util/declarations";
 import { logger } from "./util/logger";
 import * as TreeSitterUtil from "./util/tree-sitter";
-
-type AnalyzedDocument = {
-  uri: LSP.DocumentUri;
-  lastAnalyzed: Date,
-  declarations: LSP.SymbolInformation[];
-  tree: Parser.Tree;
-};
-
-const cacheBaseDir = findCacheDirectory({
-  name: "modelica-language-server",
-  create: true
-});
+import { ModelicaProject } from "./project/project";
+import { ModelicaLibrary } from "./project/library";
 
 export default class Analyzer {
-  private parser: Parser;
-  private workspaceFolders: LSP.WorkspaceFolder[] | null | undefined;
-  private uriToAnalyzedDocument: Record<string, AnalyzedDocument | undefined> =
-    {};
+  #project: ModelicaProject;
 
-  public constructor(parser: Parser, workspaceFolders?: LSP.WorkspaceFolder[] | null) {
-    this.parser = parser;
-    this.workspaceFolders = workspaceFolders;
+  public constructor(parser: Parser) {
+    this.#project = new ModelicaProject(parser);
   }
 
-  /**
-   * Analyzes a file.
-   *
-   * @param uri uri to file to analyze
-   * @param fileContent the updated content of the file
-   * @param lastModified the last time the file was changed. undefined == now.
-   * @returns diagnostics for the file
-   */
-  public analyze(uri: LSP.DocumentUri, fileContent: string, lastModified?: Date): LSP.Diagnostic[] {
-    // TODO: determine if the file needs to be reanalyzed or not
-    // (it might have been cached)
-    // We will need the lastModified time for the file.
-    const oldDocument = this.uriToAnalyzedDocument[uri];
-    if (oldDocument && lastModified && oldDocument.lastAnalyzed >= lastModified) {
-      logger.debug(`skipping: ${uri}`);
+  public async loadWorkspace(workspaceFolder: LSP.WorkspaceFolder): Promise<void> {
+    const workspace = await ModelicaLibrary.load(
+      this.#project,
+      url.fileURLToPath(workspaceFolder.uri),
+    );
+    this.#project.addWorkspace(workspace);
+  }
 
-      // TODO: return same diagnostics
-      return [];
-    }
+  public addDocument(uri: LSP.DocumentUri): void {
+    this.#project.addDocument(uri);
+  }
 
-    logger.debug(`analyze '${uri}':`);
-
-    const diagnostics: LSP.Diagnostic[] = [];
-    const tree = this.parser.parse(fileContent);
-    //logger.debug(tree.rootNode.toString());
-
-    // Get declarations
-    const declarations = getAllDeclarationsInTree(tree, uri);
-
-    // Update saved analysis for document uri
-    // TODO: do we even need fileContent?
-    this.uriToAnalyzedDocument[uri] = {
-      uri,
-      lastAnalyzed: new Date(),
-      declarations,
-      tree,
-    };
-
-    return diagnostics;
+  public updateDocument(uri: LSP.DocumentUri, text: string, range?: LSP.Range): void {
+    this.#project.updateDocument(uri, text, range);
   }
 
   public removeDocument(uri: LSP.DocumentUri): void {
-    delete this.uriToAnalyzedDocument[uri];
+    this.#project.removeDocument(uri);
   }
 
   /**
@@ -126,7 +86,7 @@ export default class Analyzer {
    * TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found in a given text document.
    */
   public getDeclarationsForUri(uri: LSP.DocumentUri): LSP.SymbolInformation[] {
-    const tree = this.uriToAnalyzedDocument[uri]?.tree;
+    const tree = this.#project.getDocumentForUri(uri)?.tree;
 
     if (!tree?.rootNode) {
       return [];
@@ -135,50 +95,70 @@ export default class Analyzer {
     return getAllDeclarationsInTree(tree, uri);
   }
 
-  public findDeclarationFromPosition(uri: LSP.DocumentUri, line: number, character: number): LSP.Location | undefined {
-    const tree = this.uriToAnalyzedDocument[uri]?.tree;
+  public async findDeclarationFromPosition(
+    uri: LSP.DocumentUri,
+    line: number,
+    character: number,
+  ): Promise<LSP.SymbolInformation | null> {
+    const tree = this.#project.getDocumentForUri(uri)?.tree;
     if (!tree?.rootNode) {
-      return undefined;
+      return null;
     }
 
-    const hoveredNode = this.findSymbol(tree, line, character);
-    if (!hoveredNode) {
-      return undefined;
+    const hoveredName = this.findNodeAtPosition(
+      tree.rootNode,
+      line,
+      character,
+      node => node.type == "name"
+    );
+    if (!hoveredName) {
+      return null;
     }
 
-    const foundDeclaration = this.findDeclaration(hoveredNode);
-    return {
-      uri,
-      range: {
-        start: {
-          line: foundDeclaration.startPosition.row,
-          character: foundDeclaration.startPosition.column,
-        },
-        end: {
-          line: foundDeclaration.endPosition.row,
-          character: foundDeclaration.endPosition.column,
-        },
+    const hoveredOffset = character - hoveredName.startPosition.column;
+    let symbols = TreeSitterUtil.getName(hoveredName);
+
+    // Find out which symbol in `symbols` is the hovered one
+    // and remove the ones after it, since they are not relevant
+    let currentOffset = 0;
+    for (let i = 0; i < symbols.length; i++) {
+      if (currentOffset > hoveredOffset) {
+        symbols = symbols.slice(0, i + 1);
+        break;
       }
-    };
+
+      currentOffset += symbols[i].length;
+    }
+
+    const hoveredIdentifier = this.findNodeAtPosition(
+      hoveredName,
+      line,
+      character,
+      node => node.type == "IDENT"
+    );
+
+    return await this.#project.getDocumentForUri(uri)?.resolveLocally(symbols, hoveredName) ?? null;
   }
 
-  private findDeclaration(symbol: Parser.SyntaxNode): Parser.SyntaxNode {
-    return undefined as any;
-  }
-
-  private findSymbol(tree: Parser.Tree, line: number, character: number): Parser.SyntaxNode | undefined {
+  private findNodeAtPosition(
+    rootNode: Parser.SyntaxNode,
+    line: number,
+    character: number,
+    condition: (node: Parser.SyntaxNode) => boolean,
+  ): Parser.SyntaxNode | undefined {
     let hoveredNode: Parser.SyntaxNode | undefined = undefined;
-    TreeSitterUtil.forEach(tree.rootNode, node => {
+    TreeSitterUtil.forEach(rootNode, (node) => {
       if (hoveredNode) {
         return false;
       }
 
-      const isInNode = line >= node.startPosition.row &&
+      const isInNode =
+        line >= node.startPosition.row &&
         line <= node.endPosition.row &&
         character >= node.startPosition.column &&
         character <= node.endPosition.column;
 
-      if (node.type == "symbol...?") {
+      if (condition(node)) {
         hoveredNode = node;
       }
 
@@ -186,51 +166,5 @@ export default class Analyzer {
     });
 
     return hoveredNode;
-  }
-
-  public async loadCache(cacheDir: string): Promise<void> {
-    for (const absolutePath in fs.readdir(cacheDir)) {
-      const originalFilePath = decodeURIComponent(path.basename(absolutePath));
-      logger.debug(`loading from cache: ${originalFilePath}`);
-
-      const documentContent = await fs.readFile(originalFilePath);
-      const originalFileUri = url.pathToFileURL(originalFilePath).href;
-      this.uriToAnalyzedDocument[originalFileUri] = JSON.parse(documentContent.toString());
-    }
-  }
-
-  public async saveCache(): Promise<void> {
-    for (const [uri, document] of Object.entries(this.uriToAnalyzedDocument)) {
-      const cacheDir = this.getWorkspaceCacheDir(uri);
-      if (!document || !cacheDir) {
-        continue;
-      }
-
-      const fileStats = await fs.stat(uri);
-      if (document.lastAnalyzed > fileStats.mtime) {
-        logger.debug(`writing to cache: ${uri}`);
-        const cacheFile = path.join(cacheDir, encodeURIComponent(uri));
-        // TODO: is there a faster serialization method?
-        fs.writeFile(cacheFile, JSON.stringify(document));
-      }
-    }
-  }
-
-  private getWorkspaceCacheDir(fileUri: LSP.DocumentUri): string | undefined {
-    if (!this.workspaceFolders) {
-      return undefined;
-    }
-
-    const workspaceFolder = this.workspaceFolders
-      .map(folder => folder.uri)
-      .filter(fileUri.startsWith)
-      .sort((a, b) => b.length - a.length)
-      .at(0);
-
-    if (!cacheBaseDir || !workspaceFolder) {
-      return undefined;
-    }
-
-    return path.join(cacheBaseDir, encodeURIComponent(workspaceFolder));
   }
 }

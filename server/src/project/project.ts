@@ -38,28 +38,25 @@ import * as LSP from "vscode-languageserver";
 
 import { ModelicaScope } from "./scope";
 import { ModelicaLibrary } from "./library";
+import { ModelicaDocument } from './document';
 
 export class ModelicaProject implements ModelicaScope {
   readonly #parser: Parser;
-  #workspace: ModelicaLibrary | undefined;
+  #workspaces: ModelicaLibrary[];
   #libraries: ModelicaLibrary[];
 
   public constructor(parser: Parser) {
     this.#parser = parser;
-    this.#workspace = undefined;
+    this.#workspaces = [];
     this.#libraries = [];
-    
   }
 
-  public get workspace(): ModelicaLibrary {
-    if (this.#workspace === undefined) {
-      throw new Error("Tried to access workspace before setting it");
-    }
-    return this.#workspace;
+  public get workspaces(): ModelicaLibrary[] {
+    return this.#workspaces;
   }
 
-  public set workspace(workspace: ModelicaLibrary) {
-    this.#workspace = workspace;
+  public addWorkspace(workspace: ModelicaLibrary) {
+    this.#workspaces.push(workspace);
   }
 
   public get libraries(): ModelicaLibrary[] {
@@ -70,9 +67,45 @@ export class ModelicaProject implements ModelicaScope {
     this.#libraries.push(library);
   }
 
+  /**
+   * Finds the document identified by the given uri.
+   *
+   * @param uri file:// uri pointing to the document
+   * @returns the document, or `null` if no such document exists
+   */
+  public getDocumentForUri(uri: LSP.DocumentUri): ModelicaDocument | null {
+    return null;
+  }
+
+  /**
+   * Adds a new document to the LSP.
+   */
+  public addDocument(uri: LSP.DocumentUri): void {
+    throw new Error("Not implemented!");
+  }
+
+  /**
+   * Updates the content and tree of the given document.
+   *
+   * @param text the modification
+   * @param range range to update, or undefined to replace the whole file
+   */
+  public updateDocument(uri: LSP.DocumentUri, text: string, range?: LSP.Range): void {
+    throw new Error("Not implemented!");
+  }
+
+  /**
+   * Removes a document from the cache.
+   */
+  public removeDocument(uri: LSP.DocumentUri): void {
+    throw new Error("Not implemented!");
+  }
+
   public async resolve(reference: string[]): Promise<LSP.SymbolInformation | null> {
-    if (reference[0] === this.workspace.name) {
-      return await this.workspace.resolve(reference.slice(1));
+    for (const workspace of this.workspaces) {
+      if (reference[0] === workspace.name) {
+        return await workspace.resolve(reference.slice(1));
+      }
     }
 
     for (const library of this.libraries) {

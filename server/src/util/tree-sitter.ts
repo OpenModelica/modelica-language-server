@@ -39,11 +39,11 @@
  * -----------------------------------------------------------------------------
  */
 
-import * as LSP from 'vscode-languageserver/node';
-import Parser from 'web-tree-sitter';
-import { SyntaxNode } from 'web-tree-sitter';
+import * as LSP from "vscode-languageserver/node";
+import Parser from "web-tree-sitter";
+import { SyntaxNode } from "web-tree-sitter";
 
-import { logger } from './logger';
+import { logger } from "./logger";
 
 /**
  * Recursively iterate over all nodes in a tree.
@@ -66,15 +66,17 @@ export function forEach(node: SyntaxNode, callback: (n: SyntaxNode) => void | bo
  * @param start     The node to start iterating from
  * @param callback  Callback returning true if node is searched node.
  */
-export function findFirst(start: SyntaxNode, callback: (n: SyntaxNode) => boolean): SyntaxNode | null {
-
+export function findFirst(
+  start: SyntaxNode,
+  callback: (n: SyntaxNode) => boolean,
+): SyntaxNode | null {
   const cursor = start.walk();
   let reachedRoot = false;
   let retracing = false;
 
   while (!reachedRoot) {
     const node = cursor.currentNode();
-    if (callback(node) === true ) {
+    if (callback(node) === true) {
       return node;
     }
 
@@ -88,14 +90,14 @@ export function findFirst(start: SyntaxNode, callback: (n: SyntaxNode) => boolea
 
     retracing = true;
     while (retracing) {
-        if (!cursor.gotoParent()) {
-            retracing = false;
-            reachedRoot = true;
-        }
-
-        if (cursor.gotoNextSibling()) {
+      if (!cursor.gotoParent()) {
         retracing = false;
-        }
+        reachedRoot = true;
+      }
+
+      if (cursor.gotoNextSibling()) {
+        retracing = false;
+      }
     }
   }
 
@@ -119,7 +121,7 @@ export function range(n: SyntaxNode): LSP.Range {
  */
 export function isDefinition(n: SyntaxNode): boolean {
   switch (n.type) {
-    case 'class_definition':
+    case "class_definition":
       return true;
     default:
       return false;
@@ -146,9 +148,28 @@ export function findParent(
  * @param start   Syntax tree node.
  */
 export function getIdentifier(start: SyntaxNode): string | undefined {
-
-  const node = findFirst(start, (n: SyntaxNode) => n.type == 'IDENT');
+  const node = findFirst(start, (n: SyntaxNode) => n.type == "IDENT");
   return node?.text;
+}
+
+/**
+ * 
+ * @param nameNode 
+ * @returns 
+ */
+export function getName(nameNode: SyntaxNode): string[] {
+  if (nameNode.type !== "name") {
+    throw new Error(`Expected a 'name' node; got '${nameNode.type}'`);
+  }
+
+  const ident = nameNode.childForFieldName("identifier")!.text;
+  const qualifierNode = nameNode.childForFieldName("qualifier");
+  if (qualifierNode) {
+    const qualifier = getName(qualifierNode);
+    return [...qualifier, ident];
+  } else {
+    return [ident];
+  }
 }
 
 /**
@@ -158,13 +179,12 @@ export function getIdentifier(start: SyntaxNode): string | undefined {
  * @returns     String with class prefixes or `null` if no `class_prefixes` can be found.
  */
 export function getClassPrefixes(node: SyntaxNode): string | null {
-
-  if (node.type !== 'class_definition') {
+  if (node.type !== "class_definition") {
     return null;
   }
 
-  const classPrefixNode = node.childForFieldName('classPrefixes');
-  if (classPrefixNode == null || classPrefixNode.type !== 'class_prefixes') {
+  const classPrefixNode = node.childForFieldName("classPrefixes");
+  if (classPrefixNode == null || classPrefixNode.type !== "class_prefixes") {
     return null;
   }
 
@@ -173,4 +193,24 @@ export function getClassPrefixes(node: SyntaxNode): string | null {
 
 export function positionToPoint(position: LSP.Position): Parser.Point {
   return { row: position.line, column: position.character };
+}
+
+export function getSymbolInformation(documentUri: string, kind: LSP.SymbolKind, node: Parser.SyntaxNode): LSP.SymbolInformation {
+  return {
+    name: getIdentifier(node) ?? "",
+    kind,
+    location: {
+      uri: documentUri,
+      range: {
+        start: {
+          line: node.startPosition.row,
+          character: node.startPosition.column,
+        },
+        end: {
+          line: node.endPosition.row,
+          character: node.endPosition.column,
+        },
+      }
+    }
+  };
 }

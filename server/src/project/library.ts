@@ -60,12 +60,13 @@ export class ModelicaLibrary implements ModelicaScope {
       entryFilter: (entry) => !!entry.name.match(/.*\.mo/) && !entry.dirent.isDirectory(),
     });
 
-    const documents = [];
+    const documents: ModelicaDocument[] = [];
+    const library = new ModelicaLibrary(project, basePath, documents);
     for (const entry of entries) {
-      documents.push(await ModelicaDocument.load(project, entry.path));
+      documents.push(await ModelicaDocument.load(library, entry.path));
     }
 
-    return new ModelicaLibrary(project, basePath, documents);
+    return library;
   }
 
   public get project(): ModelicaProject {
