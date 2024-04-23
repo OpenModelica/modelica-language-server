@@ -195,7 +195,7 @@ export function positionToPoint(position: LSP.Position): Parser.Point {
   return { row: position.line, column: position.character };
 }
 
-export function getSymbolInformation(documentUri: string, kind: LSP.SymbolKind, node: Parser.SyntaxNode): LSP.SymbolInformation {
+export function getSymbolInformation(documentUri: LSP.DocumentUri, kind: LSP.SymbolKind, node: Parser.SyntaxNode): LSP.SymbolInformation {
   return {
     name: getIdentifier(node) ?? "",
     kind,

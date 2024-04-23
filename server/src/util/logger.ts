@@ -166,3 +166,5 @@ export function getLogLevelFromEnvironment(): LSP.MessageType {
 
   return LOG_LEVELS_TO_MESSAGE_TYPES[DEFAULT_LOG_LEVEL];
 }
+
+export default logger;

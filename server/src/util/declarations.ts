@@ -61,7 +61,7 @@ const GLOBAL_DECLARATION_LEAF_NODE_TYPES = new Set([
  * @param uri   The document's uri.
  * @returns     Symbol information for all declarations.
  */
-export function getAllDeclarationsInTree(tree: Parser.Tree, uri: string): LSP.SymbolInformation[] {
+export function getAllDeclarationsInTree(tree: Parser.Tree, uri: LSP.DocumentUri): LSP.SymbolInformation[] {
   const symbols: LSP.SymbolInformation[] = [];
 
   TreeSitterUtil.forEach(tree.rootNode, (node) => {
@@ -81,7 +81,7 @@ export function getAllDeclarationsInTree(tree: Parser.Tree, uri: string): LSP.Sy
  * @param uri   The document's uri.
  * @returns     Symbol information from node.
  */
-export function nodeToSymbolInformation(node: Parser.SyntaxNode, uri: string): LSP.SymbolInformation | null {
+export function nodeToSymbolInformation(node: Parser.SyntaxNode, uri: LSP.DocumentUri): LSP.SymbolInformation | null {
   const named = node.firstNamedChild;
 
   if (named === null) {
@@ -115,7 +115,7 @@ export function nodeToSymbolInformation(node: Parser.SyntaxNode, uri: string): L
  * @param uri   The associated URI for this document.
  * @returns     LSP symbol information for definition.
  */
-function getDeclarationSymbolFromNode(node: Parser.SyntaxNode, uri: string): LSP.SymbolInformation | null {
+function getDeclarationSymbolFromNode(node: Parser.SyntaxNode, uri: LSP.DocumentUri): LSP.SymbolInformation | null {
   if (TreeSitterUtil.isDefinition(node)) {
     return nodeToSymbolInformation(node, uri);
   }

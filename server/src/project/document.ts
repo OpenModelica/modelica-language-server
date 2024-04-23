@@ -48,32 +48,29 @@ import { ModelicaScope } from "./scope";
 
 export class ModelicaDocument implements ModelicaScope, TextDocument {
   readonly #library: ModelicaLibrary;
-  readonly #path: string;
   readonly #document: TextDocument;
   #tree: Parser.Tree;
 
   private constructor(
     library: ModelicaLibrary,
-    path: string,
     document: TextDocument,
     tree: Parser.Tree,
   ) {
     this.#library = library;
-    this.#path = path;
     this.#document = document;
     this.#tree = tree;
   }
 
-  public static async load(library: ModelicaLibrary, filePath: string): Promise<ModelicaDocument> {
-    const content = await fs.readFile(filePath, "utf-8");
+  public static async load(library: ModelicaLibrary, uri: LSP.DocumentUri): Promise<ModelicaDocument> {
+    logger.debug(`Loading document at '${uri}'...`);
+
+    const content = await fs.readFile(url.fileURLToPath(uri), "utf-8");
     // On caching: see issue https://github.com/tree-sitter/tree-sitter/issues/824
     // TL;DR: it's faster to re-parse the content than it is to deserialize the cached tree.
     const tree = library.project.parser.parse(content);
 
-    const uri = url.pathToFileURL(filePath).href;
     return new ModelicaDocument(
       library,
-      filePath,
       TextDocument.create(uri, "modelica", 0, content),
       tree,
     );
@@ -149,7 +146,7 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
       return null;
     }
 
-    return TreeSitterUtil.getSymbolInformation(this.#path, LSP.SymbolKind.Class, foundSymbol);
+    return TreeSitterUtil.getSymbolInformation(this.uri, LSP.SymbolKind.Class, foundSymbol);
   }
 
   public async resolveLocally(
@@ -197,7 +194,7 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
     if (local) {
       logger.debug(`found local: ${JSON.stringify(local, undefined, 4)}`);
 
-      return TreeSitterUtil.getSymbolInformation(this.#path, LSP.SymbolKind.Variable, local);
+      return TreeSitterUtil.getSymbolInformation(this.uri, LSP.SymbolKind.Variable, local);
     }
 
     const classDefinition = node.parent?.children
@@ -206,7 +203,7 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
     if (classDefinition) {
       logger.debug(`found class: ${JSON.stringify(classDefinition, undefined, 4)}`);
 
-      return TreeSitterUtil.getSymbolInformation(this.#path, LSP.SymbolKind.Class, classDefinition);
+      return TreeSitterUtil.getSymbolInformation(this.uri, LSP.SymbolKind.Class, classDefinition);
     }
 
     if (!node.parent) {
@@ -274,7 +271,7 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
   }
 
   public get path(): string {
-    return this.#path;
+    return url.fileURLToPath(this.uri);
   }
 
   public get languageId(): string {

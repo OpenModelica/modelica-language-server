@@ -39,60 +39,63 @@ import * as path from "node:path";
 import * as util from "node:util";
 import * as url from "node:url";
 
+import * as miscUtil from "../util";
+import logger from '../util/logger';
 import { ModelicaDocument } from "./document";
 import { ModelicaProject } from "./project";
 import { ModelicaScope } from "./scope";
 
 export class ModelicaLibrary implements ModelicaScope {
   readonly #project: ModelicaProject;
-  readonly #path: string;
-  readonly #documents: ModelicaDocument[];
+  readonly #uri: string;
+  readonly #documents: Map<LSP.DocumentUri, ModelicaDocument>;
+  readonly #isWorkspace: boolean;
 
-  private constructor(project: ModelicaProject, basePath: string, documents: ModelicaDocument[]) {
+  private constructor(project: ModelicaProject, uri: LSP.URI, isWorkspace: boolean) {
     this.#project = project;
-    this.#path = basePath;
-    this.#documents = documents;
+    this.#uri = uri;
+    this.#documents = new Map();
+    this.#isWorkspace = isWorkspace;
   }
 
-  public static async load(project: ModelicaProject, basePath: string): Promise<ModelicaLibrary> {
+  public static async load(
+    project: ModelicaProject,
+    uri: LSP.URI,
+    isWorkspace: boolean,
+  ): Promise<ModelicaLibrary> {
+    logger.info(`Loading ${isWorkspace ? 'workspace' : 'library'} at '${uri}'...`);
+
     const walk = util.promisify(fsWalk.walk);
-    const entries = await walk(basePath, {
+    const entries = await walk(url.fileURLToPath(uri), {
       entryFilter: (entry) => !!entry.name.match(/.*\.mo/) && !entry.dirent.isDirectory(),
     });
 
-    const documents: ModelicaDocument[] = [];
-    const library = new ModelicaLibrary(project, basePath, documents);
+    const library = new ModelicaLibrary(project, uri, isWorkspace);
     for (const entry of entries) {
-      documents.push(await ModelicaDocument.load(library, entry.path));
+      let documentUri = url.pathToFileURL(entry.path).href;
+      // Note: LSP sends us file uris containing '%3A' instead of ':', but
+      // the node pathToFileURL uses ':' anyways. Manually fix this here.
+      // This is a bit hacky but we should ideally only be working with the URIs from LSP anyways.
+      documentUri = documentUri.slice(0, 5) + documentUri.slice(5).replace(":", "%3A");
+      logger.info(`uri`, documentUri);
+
+      const document = await ModelicaDocument.load(library, documentUri);
+      library.#documents.set(documentUri, document);
     }
 
+    logger.debug(`Loaded ${library.#documents.size} documents`);
     return library;
   }
 
-  public get project(): ModelicaProject {
-    return this.#project;
-  }
-
   public async resolve(reference: string[]): Promise<LSP.SymbolInformation | null> {
-    if (this.#documents.length === 0) {
+    if (this.#documents.size === 0) {
       return null;
     }
 
-    const getPathLength = <T>(parent: T[], child: T[]): number => {
-      let matchedLength = 0;
-      for (let i = 0; i < child.length; i++) {
-        if (parent[i] !== child[i]) {
-          break;
-        }
-        matchedLength++;
-      }
-
-      return matchedLength;
-    };
-
     let bestDocument: ModelicaDocument;
     let bestPathLength = -1;
-    for (const document of this.#documents) {
+    for (const entry of this.#documents) {
+      const [_uri, document] = entry;
       const directories = path.relative(this.path, document.path).split(path.sep);
       const fileName = directories.pop()!;
 
@@ -105,7 +108,10 @@ export class ModelicaLibrary implements ModelicaScope {
         continue;
       }
 
-      const pathLength = getPathLength(packagePath, reference);
+      // TODO: this won't work because in the case of workspaces, the actual package might be in a subdirectory
+      // Perhaps we should just add the concept of a "library root" that is searched for libraries.
+      // That might be unnecessary though.
+      const pathLength = miscUtil.getOverlappingLength(packagePath, reference);
       if (pathLength > bestPathLength) {
         bestDocument = document;
         bestPathLength = pathLength;
@@ -116,10 +122,26 @@ export class ModelicaLibrary implements ModelicaScope {
   }
 
   public get name(): string {
-    return path.basename(this.#path);
+    return path.basename(this.path);
+  }
+  
+  public get path(): string {
+    return url.fileURLToPath(this.#uri);
   }
 
-  public get path(): string {
-    return this.#path;
+  public get uri(): string {
+    return this.#uri;
+  }
+
+  public get project(): ModelicaProject {
+    return this.#project;
+  }
+
+  public get documents(): Map<LSP.DocumentUri, ModelicaDocument> {
+    return this.#documents;
+  }
+
+  public get isWorkspace(): boolean {
+    return this.#isWorkspace;
   }
 }

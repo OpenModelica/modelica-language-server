@@ -35,28 +35,22 @@
 
 import Parser from "web-tree-sitter";
 import * as LSP from "vscode-languageserver";
+import url from "node:url";
+import path from "node:path";
 
 import { ModelicaScope } from "./scope";
 import { ModelicaLibrary } from "./library";
 import { ModelicaDocument } from './document';
+import * as util from '../util';
+import logger from "../util/logger";
 
 export class ModelicaProject implements ModelicaScope {
   readonly #parser: Parser;
-  #workspaces: ModelicaLibrary[];
-  #libraries: ModelicaLibrary[];
+  readonly #libraries: ModelicaLibrary[];
 
   public constructor(parser: Parser) {
     this.#parser = parser;
-    this.#workspaces = [];
     this.#libraries = [];
-  }
-
-  public get workspaces(): ModelicaLibrary[] {
-    return this.#workspaces;
-  }
-
-  public addWorkspace(workspace: ModelicaLibrary) {
-    this.#workspaces.push(workspace);
   }
 
   public get libraries(): ModelicaLibrary[] {
@@ -71,17 +65,43 @@ export class ModelicaProject implements ModelicaScope {
    * Finds the document identified by the given uri.
    *
    * @param uri file:// uri pointing to the document
-   * @returns the document, or `null` if no such document exists
+   * @returns the document, or `undefined` if no such document exists
    */
-  public getDocumentForUri(uri: LSP.DocumentUri): ModelicaDocument | null {
-    return null;
+  public getDocument(uri: LSP.DocumentUri): ModelicaDocument | undefined {
+    for (const library of this.#libraries) {
+      const doc = library.documents.get(uri);
+      if (doc) {
+        logger.debug(`Found document: ${doc.path}`);
+        return doc;
+      }
+    }
+
+    logger.debug(`Couldn't find document: ${uri}`);
+
+    return undefined;
   }
 
   /**
    * Adds a new document to the LSP.
    */
-  public addDocument(uri: LSP.DocumentUri): void {
-    throw new Error("Not implemented!");
+  public async addDocument(uri: LSP.DocumentUri): Promise<void> {
+    logger.info(`Adding document at '${uri}'...`);
+
+    const documentPath = url.fileURLToPath(uri);
+    for (const library of this.#libraries) {
+      const relative = path.relative(library.path, documentPath);
+      const isSubdirectory = relative && !relative.startsWith("..") && !path.isAbsolute(relative);
+
+      // Assume that files can't be inside multiple libraries at the same time
+      if (isSubdirectory) {
+        const document = await ModelicaDocument.load(library, documentPath);
+        library.documents.set(uri, document);
+        logger.debug(`Added document: ${uri}`);
+        return;
+      }
+    }
+
+    throw Error(`Failed to add document '${uri}': not a part of any libraries.`);
   }
 
   /**
@@ -91,23 +111,24 @@ export class ModelicaProject implements ModelicaScope {
    * @param range range to update, or undefined to replace the whole file
    */
   public updateDocument(uri: LSP.DocumentUri, text: string, range?: LSP.Range): void {
-    throw new Error("Not implemented!");
+    logger.debug(`Updating document at '${uri}'...`);
+
+    const doc = this.getDocument(uri);
+    doc?.update(text, range);
+    logger.debug(`Updated document: ${uri}`);
   }
 
   /**
    * Removes a document from the cache.
    */
   public removeDocument(uri: LSP.DocumentUri): void {
-    throw new Error("Not implemented!");
+    logger.info(`Removing document at '${uri}'...`);
+
+    const doc = this.getDocument(uri);
+    doc?.library.documents.delete(uri);
   }
 
   public async resolve(reference: string[]): Promise<LSP.SymbolInformation | null> {
-    for (const workspace of this.workspaces) {
-      if (reference[0] === workspace.name) {
-        return await workspace.resolve(reference.slice(1));
-      }
-    }
-
     for (const library of this.libraries) {
       if (reference[0] === library.name) {
         return await library.resolve(reference.slice(1));

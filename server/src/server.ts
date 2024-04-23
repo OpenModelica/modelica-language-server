@@ -84,7 +84,7 @@ export class ModelicaServer {
     const analyzer = new Analyzer(parser);
     if (workspaceFolders != null) {
       for (const workspace of workspaceFolders) {
-        await analyzer.loadWorkspace(workspace);
+        await analyzer.loadLibrary(workspace.uri, true);
       }
     }
     // TODO: add libraries as well
@@ -164,7 +164,7 @@ export class ModelicaServer {
   }
 
   private async onShutdown(): Promise<void> {
-    logger.debug("close");
+    logger.debug("onShutdown");
   }
 
   private async onDidChangeWatchedFiles(params: LSP.DidChangeWatchedFilesParams): Promise<void> {
@@ -191,6 +191,8 @@ export class ModelicaServer {
   }
 
   private async onDeclaration(params: LSP.DeclarationParams): Promise<LSP.Location | undefined> {
+    logger.debug("onDeclaration");
+
     const symbolInformation = await this.analyzer.findDeclarationFromPosition(
       params.textDocument.uri,
       params.position.line,
@@ -201,10 +203,10 @@ export class ModelicaServer {
   }
 
   private onDocumentSymbol(params: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
+    logger.debug(`onDocumentSymbol`);
     // TODO: ideally this should return LSP.DocumentSymbol[] instead of LSP.SymbolInformation[]
     // which is a hierarchy of symbols.
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
-    logger.debug(`onDocumentSymbol`);
     return this.analyzer.getDeclarationsForUri(params.textDocument.uri);
   }
 }
@@ -213,7 +215,7 @@ export class ModelicaServer {
 // Also include all preview / proposed LSP features.
 const connection = LSP.createConnection(LSP.ProposedFeatures.all);
 
-connection.onInitialize(async (params: LSP.InitializeParams): Promise<LSP.InitializeResult> => {
+connection.onInitialize(async (params) => {
   const server = await ModelicaServer.initialize(connection, params);
   await server.register(connection);
   return {

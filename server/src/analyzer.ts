@@ -60,12 +60,13 @@ export default class Analyzer {
     this.#project = new ModelicaProject(parser);
   }
 
-  public async loadWorkspace(workspaceFolder: LSP.WorkspaceFolder): Promise<void> {
+  public async loadLibrary(uri: LSP.URI, isWorkspace: boolean): Promise<void> {
     const workspace = await ModelicaLibrary.load(
       this.#project,
-      url.fileURLToPath(workspaceFolder.uri),
+      uri,
+      isWorkspace,
     );
-    this.#project.addWorkspace(workspace);
+    this.#project.addLibrary(workspace);
   }
 
   public addDocument(uri: LSP.DocumentUri): void {
@@ -86,7 +87,7 @@ export default class Analyzer {
    * TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found in a given text document.
    */
   public getDeclarationsForUri(uri: LSP.DocumentUri): LSP.SymbolInformation[] {
-    const tree = this.#project.getDocumentForUri(uri)?.tree;
+    const tree = this.#project.getDocument(uri)?.tree;
 
     if (!tree?.rootNode) {
       return [];
@@ -100,7 +101,7 @@ export default class Analyzer {
     line: number,
     character: number,
   ): Promise<LSP.SymbolInformation | null> {
-    const tree = this.#project.getDocumentForUri(uri)?.tree;
+    const tree = this.#project.getDocument(uri)?.tree;
     if (!tree?.rootNode) {
       return null;
     }
@@ -137,14 +138,14 @@ export default class Analyzer {
       node => node.type == "IDENT"
     );
 
-    return await this.#project.getDocumentForUri(uri)?.resolveLocally(symbols, hoveredName) ?? null;
+    return await this.#project.getDocument(uri)?.resolveLocally(symbols, hoveredName) ?? null;
   }
 
   private findNodeAtPosition(
     rootNode: Parser.SyntaxNode,
     line: number,
     character: number,
-    condition: (node: Parser.SyntaxNode) => boolean,
+    condition?: (node: Parser.SyntaxNode) => boolean,
   ): Parser.SyntaxNode | undefined {
     let hoveredNode: Parser.SyntaxNode | undefined = undefined;
     TreeSitterUtil.forEach(rootNode, (node) => {
@@ -158,7 +159,7 @@ export default class Analyzer {
         character >= node.startPosition.column &&
         character <= node.endPosition.column;
 
-      if (condition(node)) {
+      if (!condition || condition(node)) {
         hoveredNode = node;
       }
 
