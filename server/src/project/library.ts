@@ -124,7 +124,7 @@ export class ModelicaLibrary implements ModelicaScope {
   public get name(): string {
     return path.basename(this.path);
   }
-  
+
   public get path(): string {
     return url.fileURLToPath(this.#uri);
   }

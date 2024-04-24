@@ -211,6 +211,7 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
       return await this.project.resolve(reference);
     }
 
+
     return await this.resolveLocally(reference, node.parent!);
   }
 

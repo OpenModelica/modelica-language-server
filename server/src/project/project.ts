@@ -54,7 +54,7 @@ export class ModelicaProject implements ModelicaScope {
   }
 
   public get libraries(): ModelicaLibrary[] {
-    return this.libraries;
+    return this.#libraries;
   }
 
   public addLibrary(library: ModelicaLibrary) {

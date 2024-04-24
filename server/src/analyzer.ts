@@ -137,8 +137,11 @@ export default class Analyzer {
       character,
       node => node.type == "IDENT"
     );
+    if (!hoveredIdentifier) {
+      return null;
+    }
 
-    return await this.#project.getDocument(uri)?.resolveLocally(symbols, hoveredName) ?? null;
+    return await this.#project.getDocument(uri)?.resolveLocally(symbols, hoveredIdentifier) ?? null;
   }
 
   private findNodeAtPosition(
@@ -153,11 +156,11 @@ export default class Analyzer {
         return false;
       }
 
-      const isInNode =
-        line >= node.startPosition.row &&
-        line <= node.endPosition.row &&
-        character >= node.startPosition.column &&
-        character <= node.endPosition.column;
+      const startPos = node.startPosition;
+      const endPos = node.endPosition;
+      const isInNode = (line > startPos.row && line < endPos.row)
+        || (line >= startPos.row && character >= startPos.column && character <= startPos.column)
+        || (line >= endPos.row && character >= endPos.column && character <= endPos.column);
 
       if (!condition || condition(node)) {
         hoveredNode = node;
