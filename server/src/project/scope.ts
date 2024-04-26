@@ -49,5 +49,5 @@ export interface ModelicaScope {
    * @param reference a symbol name, relative to the scope
    * @returns the symbol declaration, or null if not found in this scope.
    */
-  resolve(reference: string[]): Promise<LSP.SymbolInformation | null>;
+  resolve(reference: string[]): Promise<LSP.LocationLink | null>;
 }

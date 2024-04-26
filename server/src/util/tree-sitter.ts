@@ -153,9 +153,68 @@ export function getIdentifier(start: SyntaxNode): string | undefined {
 }
 
 /**
- * 
- * @param nameNode 
- * @returns 
+ * Returns the identifier(s) declared by the given node, or `[]` if no
+ * identifiers are declared.
+ *
+ * Note: this does not return any identifiers that are declared "inside" of the
+ * node. For instance, calling `getDeclaredIdentifiers` on a class_definition
+ * will only return the name of the class.
+ *
+ * @param node The node to check. Must be a declaration.
+ * @returns The identifiers.
+ */
+export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
+  if (node == null) {
+    throw new Error("getDeclaredIdentifiers called with null/undefined node");
+  }
+
+  // TODO: does this support all desired node types? Are we considering too many nodes?
+  switch (node.type) {
+    case "declaration":
+    case "derivative_class_specifier":
+    case "enumeration_class_specifier":
+    case "extends_class_specifier":
+    case "long_class_specifier":
+    case "short_class_specifier":
+    case "enumeration_literal":
+    case "for_index":
+      return [node.childForFieldName("identifier")!.text];
+    case "stored_definitions":
+    case "component_list":
+    case "enum_list":
+    case "element_list":
+    case "public_element_list":
+    case "protected_element_list":
+    case "for_indices":
+      return node.namedChildren.flatMap(getDeclaredIdentifiers);
+    case "component_clause":
+      return getDeclaredIdentifiers(node.childForFieldName("componentDeclarations")!);
+    case "component_declaration":
+      return getDeclaredIdentifiers(node.childForFieldName("declaration")!);
+    case "component_redeclaration":
+      return getDeclaredIdentifiers(node.childForFieldName("componentClause")!);
+    case "stored_definition":
+      return getDeclaredIdentifiers(node.childForFieldName("classDefinition")!);
+    case "class_definition":
+      return getDeclaredIdentifiers(node.childForFieldName("classSpecifier")!);
+    case "for_equation":
+    case "for_statement":
+      return getDeclaredIdentifiers(node.childForFieldName("indices")!);
+    case "named_element": {
+      const definition =
+        node.childForFieldName("classDefinition") ?? node.childForFieldName("componentClause")!;
+      return getDeclaredIdentifiers(definition);
+    }
+    default:
+      logger.warn(`getDeclaredIdentifiers: unknown node type ${node.type}`);
+      return [];
+  }
+}
+
+/**
+ *
+ * @param nameNode
+ * @returns
  */
 export function getName(nameNode: SyntaxNode): string[] {
   if (nameNode.type !== "name") {
@@ -195,22 +254,24 @@ export function positionToPoint(position: LSP.Position): Parser.Point {
   return { row: position.line, column: position.character };
 }
 
-export function getSymbolInformation(documentUri: LSP.DocumentUri, kind: LSP.SymbolKind, node: Parser.SyntaxNode): LSP.SymbolInformation {
+export function pointToPosition(point: Parser.Point): LSP.Position {
+  return { line: point.row, character: point.column };
+}
+
+export function createLocationLink(
+  documentUri: LSP.DocumentUri,
+  node: Parser.SyntaxNode,
+): LSP.LocationLink {
+  // TODO: properly set targetSelectionRange (e.g. the name of a function or variable).
   return {
-    name: getIdentifier(node) ?? "",
-    kind,
-    location: {
-      uri: documentUri,
-      range: {
-        start: {
-          line: node.startPosition.row,
-          character: node.startPosition.column,
-        },
-        end: {
-          line: node.endPosition.row,
-          character: node.endPosition.column,
-        },
-      }
-    }
+    targetUri: documentUri,
+    targetRange: {
+      start: pointToPosition(node.startPosition),
+      end: pointToPosition(node.endPosition),
+    },
+    targetSelectionRange: {
+      start: pointToPosition(node.startPosition),
+      end: pointToPosition(node.endPosition),
+    },
   };
 }

@@ -101,7 +101,7 @@ export class ModelicaProject implements ModelicaScope {
       }
     }
 
-    throw Error(`Failed to add document '${uri}': not a part of any libraries.`);
+    throw new Error(`Failed to add document '${uri}': not a part of any libraries.`);
   }
 
   /**
@@ -114,8 +114,12 @@ export class ModelicaProject implements ModelicaScope {
     logger.debug(`Updating document at '${uri}'...`);
 
     const doc = this.getDocument(uri);
-    doc?.update(text, range);
-    logger.debug(`Updated document: ${uri}`);
+    if (doc) {
+      doc.update(text, range);
+      logger.debug(`Updated document '${uri}'`);
+    } else {
+      logger.warn(`Failed to update document '${uri}': not loaded`);
+    }
   }
 
   /**
@@ -125,13 +129,19 @@ export class ModelicaProject implements ModelicaScope {
     logger.info(`Removing document at '${uri}'...`);
 
     const doc = this.getDocument(uri);
-    doc?.library.documents.delete(uri);
+    if (doc) {
+      doc.library.documents.delete(uri);
+    } else {
+      logger.warn(`Failed to remove document '${uri}': not loaded`);
+    }
   }
 
-  public async resolve(reference: string[]): Promise<LSP.SymbolInformation | null> {
+  public async resolve(reference: string[]): Promise<LSP.LocationLink | null> {
+    logger.debug(`searching for reference '${reference.join('.')}' globally.`);
+
     for (const library of this.libraries) {
       if (reference[0] === library.name) {
-        return await library.resolve(reference.slice(1));
+        return await library.resolve(reference);
       }
     }
 
@@ -141,6 +151,7 @@ export class ModelicaProject implements ModelicaScope {
 
     // TODO: check... array subscripts? can probably skip that
 
+    logger.debug(`Reference '${reference.join('.')}' not found in project.`);
     return null;
   }
 

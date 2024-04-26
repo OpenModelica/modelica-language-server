@@ -38,6 +38,7 @@ import * as LSP from "vscode-languageserver/node";
 import Parser from "web-tree-sitter";
 import * as fs from "node:fs/promises";
 import * as url from "node:url";
+import * as path from "node:path";
 
 import { logger } from "../util/logger";
 import * as TreeSitterUtil from "../util/tree-sitter";
@@ -51,17 +52,16 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
   readonly #document: TextDocument;
   #tree: Parser.Tree;
 
-  private constructor(
-    library: ModelicaLibrary,
-    document: TextDocument,
-    tree: Parser.Tree,
-  ) {
+  private constructor(library: ModelicaLibrary, document: TextDocument, tree: Parser.Tree) {
     this.#library = library;
     this.#document = document;
     this.#tree = tree;
   }
 
-  public static async load(library: ModelicaLibrary, uri: LSP.DocumentUri): Promise<ModelicaDocument> {
+  public static async load(
+    library: ModelicaLibrary,
+    uri: LSP.DocumentUri,
+  ): Promise<ModelicaDocument> {
     logger.debug(`Loading document at '${uri}'...`);
 
     const content = await fs.readFile(url.fileURLToPath(uri), "utf-8");
@@ -69,11 +69,7 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
     // TL;DR: it's faster to re-parse the content than it is to deserialize the cached tree.
     const tree = library.project.parser.parse(content);
 
-    return new ModelicaDocument(
-      library,
-      TextDocument.create(uri, "modelica", 0, content),
-      tree,
-    );
+    return new ModelicaDocument(library, TextDocument.create(uri, "modelica", 0, content), tree);
   }
 
   public async update(text: string, range?: LSP.Range): Promise<void> {
@@ -122,15 +118,22 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
     }, this.#tree);
   }
 
-  public async resolve(reference: string[]): Promise<LSP.SymbolInformation | null> {
+  public async resolve(reference: string[]): Promise<LSP.LocationLink | null> {
+    logger.debug(`Searching for reference '${reference.join(".")}' in document '${this.uri}'`);
+
+    // make the reference relative to the root of this file.
+    reference = reference.slice(this.packagePath.length - 1);
     let foundSymbol: Parser.SyntaxNode | null = null;
     TreeSitterUtil.forEach(this.#tree.rootNode, (node: Parser.SyntaxNode) => {
       if (foundSymbol) {
         return false;
       }
 
-      const className = TreeSitterUtil.getIdentifier(node);
-      if (node.type == "class_definition" && className == reference[0]) {
+      if (node.type !== "class_definition") {
+        return false;
+      }
+
+      if (TreeSitterUtil.getDeclaredIdentifiers(node).includes(reference[0])) {
         reference = reference.slice(1);
         if (reference.length == 0) {
           foundSymbol = node;
@@ -146,79 +149,102 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
       return null;
     }
 
-    return TreeSitterUtil.getSymbolInformation(this.uri, LSP.SymbolKind.Class, foundSymbol);
+    const info = TreeSitterUtil.createLocationLink(this.uri, foundSymbol);
+    logger.debug("Resolved reference:", info);
+    return info;
   }
 
   public async resolveLocally(
     reference: string[],
     node: Parser.SyntaxNode,
-  ): Promise<LSP.SymbolInformation | null> {
-    // Bottom up traversal:
-    // if there is an import statement in the current scope:
-    //     call `resolve` on the current ModelicaProject (or library?),
-    //     `resolve([..importSymbols, ..reference])`
-    // else if there is a variable declaration with the name reference[0]:
-    //     if reference.length is just 1:
-    //         return the position of the variable declaration
-    //     else:
-    //         find the type of the local.
-    //         return the position of the field declaration in that type
-    // else if there is a local class with the name reference[0]:
-    //     if reference.length is just 1:
-    //         return the position of the class declaration
-    //     else:
-    //         return the position of the declaration in that class
-    // else:
-    //     if node.parentNode == null:
-    //         call `resolve` on the current ModelicaProject (or library?)
-    //     else:
-    //         node = node.parentNode
+    classDepth: number = 0,
+  ): Promise<LSP.LocationLink | null> {
+    const symbol = reference.length > 1 ? reference[reference.length - classDepth] : reference[0];
+    const variableTypes = ["component_clause", "component_redeclaration", "named_element"];
+    const local = node.children
+      .filter((child) => variableTypes.includes(child.type))
+      .map((decl) => [decl, TreeSitterUtil.getDeclaredIdentifiers(decl)] as const)
+      .find(([_decl, idents]) => idents.includes(symbol));
+    if (local) {
+      logger.debug(`Resolved ${reference.join(".")} to local: ${local[1]}`);
+
+      return TreeSitterUtil.createLocationLink(this.uri, local[0]);
+    }
+
+    const classDefinition = node.children
+      .filter((child) => child.type === "class_definition")
+      .map((classDef) => [classDef, TreeSitterUtil.getDeclaredIdentifiers(classDef)] as const)
+      .find(([_def, idents]) => idents.includes(symbol));
+    if (classDefinition) {
+      logger.debug(`Resolved ${reference.join(".")} to class: ${classDefinition[1]}`);
+
+      return TreeSitterUtil.createLocationLink(this.uri, classDefinition[0]);
+    }
+
+    // Check for any elements declared by a class.
+    if (node.type === "class_definition") {
+      const elementListTypes = ["element_list", "public_element_list", "protected_element_list"];
+      const element = node
+        .childForFieldName("classSpecifier")
+        ?.children?.filter((child) => elementListTypes.includes(child.type))
+        ?.flatMap((element_list) => element_list.namedChildren)
+        ?.map((element) => [element, TreeSitterUtil.getDeclaredIdentifiers(element)] as const)
+        ?.find(([_element, idents]) => idents.includes(symbol));
+
+      if (element) {
+        logger.debug(`Resolved ${reference.join(".")} to element: ${element[1]}`);
+
+        return TreeSitterUtil.createLocationLink(this.uri, element[0]);
+      }
+    }
+
     const importClauses = node.parent?.children.filter(
-      (sibling) => sibling.type == "import_clause",
+      (sibling) => sibling.type === "import_clause",
     );
     if (importClauses && importClauses.length > 0) {
       for (const importClause of importClauses) {
         const importedSymbol = await this.resolveImportClause(reference, importClause);
         if (importedSymbol !== undefined) {
-          logger.debug(
-            `resolved ${reference} to import: ${JSON.stringify(importedSymbol, undefined, 4)}`,
-          );
+          logger.debug(`Resolved ${reference.join(".")} to import: ${importClause}`);
           return importedSymbol;
         }
       }
     }
 
-    const local = node.parent?.children
-      .filter((sibling) => sibling.type == "component_clause")
-      .find((decl) => TreeSitterUtil.getIdentifier(decl) === reference[0]);
-    if (local) {
-      logger.debug(`found local: ${JSON.stringify(local, undefined, 4)}`);
+    if (node.parent) {
+      if (node.type === "class_definition") {
+        classDepth++;
+      }
 
-      return TreeSitterUtil.getSymbolInformation(this.uri, LSP.SymbolKind.Variable, local);
+      //logger.debug(`Reference ${reference.join(".")} not at current node; checking parent node`);
+      return await this.resolveLocally(reference, node.parent, classDepth);
     }
 
-    const classDefinition = node.parent?.children
-      .filter((sibling) => sibling.type == "class_definition")
-      .find((def) => TreeSitterUtil.getIdentifier(def) === reference[0]);
-    if (classDefinition) {
-      logger.debug(`found class: ${JSON.stringify(classDefinition, undefined, 4)}`);
+    // TODO: check for relative symbols. Example:
+    //
+    // within Foo;
+    // 
+    // package Bar
+    //   class Baz
+    //   end Baz;
+    // end Bar;
+    //
+    // class Test 
+    //   Foo.Bar.Baz baz1; // absolute symbol
+    //   Bar.Baz baz2;     // relative symbol -- still valid!
+    // end Test;
+    //
+    // TODO: also make sure to handle encapsulated packages correctly. 
 
-      return TreeSitterUtil.getSymbolInformation(this.uri, LSP.SymbolKind.Class, classDefinition);
-    }
-
-    if (!node.parent) {
-      // call `resolve` on the current ModelicaProject (or library?)
-      return await this.project.resolve(reference);
-    }
-
-
-    return await this.resolveLocally(reference, node.parent!);
+    // call `resolve` on the current ModelicaProject (or library?)
+    logger.debug(`Reference '${reference.join(".")}' not in document; is this a global?`);
+    return await this.project.resolve(reference);
   }
 
   private async resolveImportClause(
     reference: string[],
     importClause: Parser.SyntaxNode,
-  ): Promise<LSP.SymbolInformation | null | undefined> {
+  ): Promise<LSP.LocationLink | null | undefined> {
     const importedSymbol = TreeSitterUtil.getName(importClause.childForFieldName("name")!);
 
     // wildcard import: import a.b.*;
@@ -285,6 +311,18 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
 
   public get lineCount(): number {
     return this.#document.lineCount;
+  }
+
+  public get packagePath(): string[] {
+    const directories = path.relative(this.#library.path, this.path).split(path.sep);
+    const fileName = directories.pop()!;
+
+    const packagePath: string[] = [this.#library.name, ...directories];
+    if (fileName !== "package.mo") {
+      packagePath.push(fileName.slice(0, fileName.length - ".mo".length));
+    }
+
+    return packagePath;
   }
 
   public get project(): ModelicaProject {

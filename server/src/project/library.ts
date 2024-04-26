@@ -77,7 +77,6 @@ export class ModelicaLibrary implements ModelicaScope {
       // the node pathToFileURL uses ':' anyways. Manually fix this here.
       // This is a bit hacky but we should ideally only be working with the URIs from LSP anyways.
       documentUri = documentUri.slice(0, 5) + documentUri.slice(5).replace(":", "%3A");
-      logger.info(`uri`, documentUri);
 
       const document = await ModelicaDocument.load(library, documentUri);
       library.#documents.set(documentUri, document);
@@ -87,38 +86,55 @@ export class ModelicaLibrary implements ModelicaScope {
     return library;
   }
 
-  public async resolve(reference: string[]): Promise<LSP.SymbolInformation | null> {
+  public async resolve(reference: string[]): Promise<LSP.LocationLink | null> {
+    logger.debug(`searching for reference '${reference.join('.')}' in library '${this.name}'.`);
+    logger.debug(`Base dir: ${this.path}`);
+
     if (this.#documents.size === 0) {
+      logger.debug(`No documents in library; giving up`);
       return null;
     }
 
-    let bestDocument: ModelicaDocument;
+    let bestDocuments: ModelicaDocument[] = [];
     let bestPathLength = -1;
     for (const entry of this.#documents) {
       const [_uri, document] = entry;
-      const directories = path.relative(this.path, document.path).split(path.sep);
-      const fileName = directories.pop()!;
+      const packagePath = document.packagePath;
 
-      let packagePath: string[];
-      if (fileName === "package.mo") {
-        packagePath = directories;
-      } else if (fileName.endsWith(".mo")) {
-        packagePath = [...directories, fileName.slice(0, fileName.length - ".mo".length)];
-      } else {
-        continue;
-      }
+      // TODO: the package path should be relative to the root package.mo file
+      // but in the case of workspaces, it doesn't have to be. This ruins the
+      // algorithm we use here.
+      //
+      // Since a workspace can technically store many libraries, we need to treat
+      // them differently. A workspace should be considered to be a "library root"
+      // that can contain multiple libraries. We should scan the workspace for
+      // libraries upon creating it, and when adding files to the workspace,
+      // we should figure out which library it belongs to.
+      // TODO: how do we handle the case in which a file belongs to no libraries?
 
-      // TODO: this won't work because in the case of workspaces, the actual package might be in a subdirectory
-      // Perhaps we should just add the concept of a "library root" that is searched for libraries.
-      // That might be unnecessary though.
+      logger.debug(`package: ${packagePath}\t\treference: ${reference}`);
       const pathLength = miscUtil.getOverlappingLength(packagePath, reference);
       if (pathLength > bestPathLength) {
-        bestDocument = document;
+        bestDocuments = [document];
         bestPathLength = pathLength;
+      } else if (pathLength === bestPathLength) {
+        bestDocuments.push(document);
       }
     }
 
-    return await bestDocument!.resolve(reference);
+    // logger.debug(`Chose these documents as the best matches:`);
+    // for (const document of bestDocuments) {
+    //   logger.debug(`  - ${document.uri}`);
+    // }
+
+    for (const document of bestDocuments) {
+      const result = await document.resolve(reference);
+      if (result) {
+        return result;
+      }
+    }
+
+    return null;
   }
 
   public get name(): string {

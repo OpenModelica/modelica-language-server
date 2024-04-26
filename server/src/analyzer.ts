@@ -61,11 +61,7 @@ export default class Analyzer {
   }
 
   public async loadLibrary(uri: LSP.URI, isWorkspace: boolean): Promise<void> {
-    const workspace = await ModelicaLibrary.load(
-      this.#project,
-      uri,
-      isWorkspace,
-    );
+    const workspace = await ModelicaLibrary.load(this.#project, uri, isWorkspace);
     this.#project.addLibrary(workspace);
   }
 
@@ -100,75 +96,102 @@ export default class Analyzer {
     uri: LSP.DocumentUri,
     line: number,
     character: number,
-  ): Promise<LSP.SymbolInformation | null> {
-    const tree = this.#project.getDocument(uri)?.tree;
-    if (!tree?.rootNode) {
+  ): Promise<LSP.LocationLink | null> {
+    logger.debug(`Searching for declaration of symbol at ${line + 1}:${character + 1} in '${uri}'`);
+
+    const document = this.#project.getDocument(uri);
+    if (!document) {
+      logger.warn(`Couldn't find declaration: document not loaded.`);
       return null;
     }
+
+    if (!document.tree.rootNode) {
+      logger.info(`Couldn't find declaration: document has no nodes.`);
+      return null;
+    }
+
+    const documentOffset = document.offsetAt({ line, character });
 
     const hoveredName = this.findNodeAtPosition(
-      tree.rootNode,
-      line,
-      character,
-      node => node.type == "name"
+      document.tree.rootNode,
+      documentOffset,
+      (node) => node.type === "name",
     );
-    if (!hoveredName) {
-      return null;
-    }
 
-    const hoveredOffset = character - hoveredName.startPosition.column;
-    let symbols = TreeSitterUtil.getName(hoveredName);
+    let symbols: string[] | undefined;
+    let startNode: Parser.SyntaxNode | undefined;
+    if (hoveredName) {
+      symbols = TreeSitterUtil.getName(hoveredName);
 
-    // Find out which symbol in `symbols` is the hovered one
-    // and remove the ones after it, since they are not relevant
-    let currentOffset = 0;
-    for (let i = 0; i < symbols.length; i++) {
-      if (currentOffset > hoveredOffset) {
-        symbols = symbols.slice(0, i + 1);
-        break;
+      // Find out which symbol in `symbols` is the hovered one
+      // and remove the ones after it, since they are not relevant
+      // TODO: this doesn't actually do anything at the moment.
+      const hoveredOffset = character - hoveredName.startPosition.column;
+      let currentOffset = 0;
+      for (let i = 0; i < symbols.length; i++) {
+        if (currentOffset > hoveredOffset) {
+          symbols = symbols.slice(0, i);
+          break;
+        }
+
+        currentOffset += symbols[i].length;
       }
 
-      currentOffset += symbols[i].length;
+      startNode = this.findNodeAtPosition(
+        hoveredName,
+        documentOffset,
+        (node) => node.type === "IDENT",
+      );
+    } else {
+      startNode = this.findNodeAtPosition(
+        document.tree.rootNode,
+        documentOffset,
+        (node) => node.type === "IDENT",
+      );
+      symbols = startNode ? [startNode.text] : undefined;
     }
 
-    const hoveredIdentifier = this.findNodeAtPosition(
-      hoveredName,
-      line,
-      character,
-      node => node.type == "IDENT"
-    );
-    if (!hoveredIdentifier) {
+    if (!startNode || !symbols) {
+      logger.info(`Tried to find declaration in '${uri}', but not hovering on any identifiers`);
       return null;
     }
 
-    return await this.#project.getDocument(uri)?.resolveLocally(symbols, hoveredIdentifier) ?? null;
+    logger.debug(
+      `Searching for declaration '${symbols.join(".")} at ${line + 1}:${character + 1} in '${uri}'`,
+    );
+    const result = await document.resolveLocally(symbols, startNode);
+    if (result) {
+      logger.debug(`Found declaration: `, result);
+    } else {
+      logger.debug("Didn't find declaration");
+    }
+    return result;
   }
 
+  /**
+   * Locates the first node at the given text position that matches the given
+   * `condition`, starting from the `rootNode`.
+   *
+   * Note: it is very important to have some kind of condition. If one tries to
+   * just accept the first node at that position, this function will always
+   * return the `rootNode` (or `undefined` if outside the node.)
+   *
+   * @param rootNode node to start searching from. parents/siblings of this node will be ignored
+   * @param offset the offset of the symbol from the start of the document
+   * @param condition the condition to check if a node is good
+   * @returns the node at the position, or `undefined` if none was found
+   */
   private findNodeAtPosition(
     rootNode: Parser.SyntaxNode,
-    line: number,
-    character: number,
-    condition?: (node: Parser.SyntaxNode) => boolean,
+    offset: number,
+    condition: (node: Parser.SyntaxNode) => boolean,
   ): Parser.SyntaxNode | undefined {
-    let hoveredNode: Parser.SyntaxNode | undefined = undefined;
-    TreeSitterUtil.forEach(rootNode, (node) => {
-      if (hoveredNode) {
-        return false;
-      }
-
-      const startPos = node.startPosition;
-      const endPos = node.endPosition;
-      const isInNode = (line > startPos.row && line < endPos.row)
-        || (line >= startPos.row && character >= startPos.column && character <= startPos.column)
-        || (line >= endPos.row && character >= endPos.column && character <= endPos.column);
-
-      if (!condition || condition(node)) {
-        hoveredNode = node;
-      }
-
-      return isInNode;
+    // TODO: find the deepest node. findFirst doesn't work (maybe?)
+    const hoveredNode = TreeSitterUtil.findFirst(rootNode, (node) => {
+      const isInNode = offset >= node.startIndex && offset <= node.endIndex;
+      return isInNode && condition(node);
     });
 
-    return hoveredNode;
+    return hoveredNode ?? undefined;
   }
 }

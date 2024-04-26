@@ -101,6 +101,7 @@ export class ModelicaServer {
       colorProvider: false,
       completionProvider: undefined,
       declarationProvider: true,
+      definitionProvider: true,
       documentSymbolProvider: true,
       hoverProvider: false,
       signatureHelpProvider: undefined,
@@ -125,6 +126,7 @@ export class ModelicaServer {
     connection.onInitialized(this.onInitialized.bind(this));
     connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
     connection.onDeclaration(this.onDeclaration.bind(this));
+    connection.onDefinition(this.onDefinition.bind(this));
 
     // The content of a text document has changed. This event is emitted
     // when the text document first opened or when its content has changed.
@@ -178,7 +180,7 @@ export class ModelicaServer {
         case LSP.FileChangeType.Changed: {
           // TODO: incremental?
           const path = url.fileURLToPath(change.uri);
-          const content = await fs.readFile(path, 'utf-8');
+          const content = await fs.readFile(path, "utf-8");
           this.analyzer.updateDocument(change.uri, content);
           break;
         }
@@ -190,16 +192,67 @@ export class ModelicaServer {
     }
   }
 
-  private async onDeclaration(params: LSP.DeclarationParams): Promise<LSP.Location | undefined> {
+  // TODO: We currently treat goto declaration and goto definition the same,
+  //       but there are probably some differences we need to handle.
+  //
+  // 1. inner/outer variables. Modelica allows the user to redeclare variables
+  //    from enclosing classes to use them in inner classes. Goto Declaration
+  //    should go to whichever declaration is in scope, while Goto Definition
+  //    should go to the `outer` declaration. In the following example:
+  //
+  //        model Outer
+  //          model Inner
+  //            inner Real shared;
+  //          equation
+  //            shared = ...;             (A)
+  //          end Inner;
+  //          outer Real shared = 0;
+  //        equation
+  //          shared = ...;               (B)
+  //        end Outer;
+  //
+  //   +-----+-------------+------------+
+  //   | Ref | Declaration | Definition |
+  //   +-----+-------------+------------+
+  //   |  A  |    inner    |   outer    |
+  //   |  B  |    outer    |   outer    |
+  //   +-----+-------------+------------+
+  //
+  // 2. extends_clause is weird. This is a valid class:
+  //
+  //        class extends Foo;
+  //        end Foo;
+  //
+  //    Is this a definition of Foo or a redeclaration of Foo?
+
+  private async onDeclaration(params: LSP.DeclarationParams): Promise<LSP.LocationLink[]> {
     logger.debug("onDeclaration");
 
-    const symbolInformation = await this.analyzer.findDeclarationFromPosition(
+    const locationLink = await this.analyzer.findDeclarationFromPosition(
       params.textDocument.uri,
       params.position.line,
       params.position.character,
     );
+    if (locationLink == null) {
+      return [];
+    }
 
-    return symbolInformation?.location ?? undefined;
+    return [locationLink];
+  }
+
+  private async onDefinition(params: LSP.DefinitionParams): Promise<LSP.LocationLink[]> {
+    logger.debug("onDefinition");
+
+    const locationLink = await this.analyzer.findDeclarationFromPosition(
+      params.textDocument.uri,
+      params.position.line,
+      params.position.character,
+    );
+    if (locationLink == null) {
+      return [];
+    }
+
+    return [locationLink];
   }
 
   private onDocumentSymbol(params: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
