@@ -45,7 +45,7 @@ import * as TreeSitterUtil from "../util/tree-sitter";
 import { positionToPoint } from "../util/tree-sitter";
 import { ModelicaLibrary } from "./library";
 import { ModelicaProject } from "./project";
-import { ModelicaScope } from "./scope";
+import { ModelicaScope, ResolvedSymbol } from "./scope";
 
 export class ModelicaDocument implements ModelicaScope, TextDocument {
   readonly #library: ModelicaLibrary;
@@ -118,13 +118,14 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
     }, this.#tree);
   }
 
-  public async resolve(reference: string[]): Promise<LSP.LocationLink | null> {
+  public async resolve(reference: string[]): Promise<ResolvedSymbol | null> {
     logger.debug(`Searching for reference '${reference.join(".")}' in document '${this.uri}'`);
 
     // make the reference relative to the root of this file.
+    // TODO: this won't handle constants (+other static fields?) properly
     reference = reference.slice(this.packagePath.length - 1);
     let foundSymbol: Parser.SyntaxNode | null = null;
-    TreeSitterUtil.forEach(this.#tree.rootNode, (node: Parser.SyntaxNode) => {
+    await TreeSitterUtil.forEach(this.#tree.rootNode, async (node: Parser.SyntaxNode) => {
       if (foundSymbol) {
         return false;
       }
@@ -142,6 +143,12 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
         return true;
       }
 
+      const decl = await this.findDeclarationInClass(node, reference[0]);
+      if (decl) {
+        foundSymbol = decl.node;
+        return true;
+      }
+
       return false;
     });
 
@@ -149,55 +156,79 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
       return null;
     }
 
-    const info = TreeSitterUtil.createLocationLink(this.uri, foundSymbol);
-    logger.debug("Resolved reference:", info);
-    return info;
+    logger.debug("Resolved reference:", foundSymbol);
+    return {
+      node: foundSymbol,
+      documentUri: this.uri,
+      symbol: TreeSitterUtil.getIdentifier(foundSymbol)!,
+    };
   }
 
   public async resolveLocally(
     reference: string[],
     node: Parser.SyntaxNode,
-    classDepth: number = 0,
-  ): Promise<LSP.LocationLink | null> {
-    const symbol = reference.length > 1 ? reference[reference.length - classDepth] : reference[0];
+  ): Promise<ResolvedSymbol | null> {
+    // Check if the referenced symbol is relative to a class that is in scope. 
+    // If so, we need to resolve it top-down instead.
+    // const localClass = node.children
+    //   .find((child) =>
+    //     child.type === "class_definition" &&
+    //       TreeSitterUtil.getIdentifier(child) == reference[0]
+    //   );
+    // if (reference.length > 1 && localClass) {
+    //   return await this.resolve([...this.packagePath, ...reference]);
+    // }
+
+    // TODO: what's the point of this? If reference.at(1 - classDepth) isn't the last symbol
+    //       then we'll return early and won't fully resolve the reference.
+    //const symbol = reference.length > 1 ? reference[reference.length - classDepth] : reference[0];
+    const symbol = reference[0];
+
+    // Check if this symbol refers to a local variable.
     const variableTypes = ["component_clause", "component_redeclaration", "named_element"];
     const local = node.children
       .filter((child) => variableTypes.includes(child.type))
       .map((decl) => [decl, TreeSitterUtil.getDeclaredIdentifiers(decl)] as const)
       .find(([_decl, idents]) => idents.includes(symbol));
-    if (local) {
+    if (reference.length === 1 && local) {
       logger.debug(`Resolved ${reference.join(".")} to local: ${local[1]}`);
 
-      return TreeSitterUtil.createLocationLink(this.uri, local[0]);
+      return {
+        node: local[0],
+        documentUri: this.uri,
+        symbol,
+      };
     }
 
+    // Check if the symbol refers to a local class.
     const classDefinition = node.children
       .filter((child) => child.type === "class_definition")
       .map((classDef) => [classDef, TreeSitterUtil.getDeclaredIdentifiers(classDef)] as const)
       .find(([_def, idents]) => idents.includes(symbol));
     if (classDefinition) {
       logger.debug(`Resolved ${reference.join(".")} to class: ${classDefinition[1]}`);
+      if (reference.length === 1) {
+        return {
+          node: classDefinition[0],
+          documentUri: this.uri,
+          symbol,
+        };
+      }
 
-      return TreeSitterUtil.createLocationLink(this.uri, classDefinition[0]);
+      // TODO: Use an absolute reference [...this.packagePath, ...localAncestors, ...reference]
+      // or use some other function
+      return await this.resolve(reference);
     }
 
     // Check for any elements declared by a class.
     if (node.type === "class_definition") {
-      const elementListTypes = ["element_list", "public_element_list", "protected_element_list"];
-      const element = node
-        .childForFieldName("classSpecifier")
-        ?.children?.filter((child) => elementListTypes.includes(child.type))
-        ?.flatMap((element_list) => element_list.namedChildren)
-        ?.map((element) => [element, TreeSitterUtil.getDeclaredIdentifiers(element)] as const)
-        ?.find(([_element, idents]) => idents.includes(symbol));
-
-      if (element) {
-        logger.debug(`Resolved ${reference.join(".")} to element: ${element[1]}`);
-
-        return TreeSitterUtil.createLocationLink(this.uri, element[0]);
+      const decl = await this.findDeclarationInClass(node, symbol);
+      if (decl) {
+        return decl;
       }
     }
 
+    // Check if this symbol refers to an import---either a direct import or a wildcard import.
     const importClauses = node.parent?.children.filter(
       (sibling) => sibling.type === "import_clause",
     );
@@ -211,40 +242,88 @@ export class ModelicaDocument implements ModelicaScope, TextDocument {
       }
     }
 
-    if (node.parent) {
-      if (node.type === "class_definition") {
-        classDepth++;
-      }
-
       //logger.debug(`Reference ${reference.join(".")} not at current node; checking parent node`);
-      return await this.resolveLocally(reference, node.parent, classDepth);
+      return await this.resolveLocally(reference, node.parent);
     }
 
     // TODO: check for relative symbols. Example:
     //
     // within Foo;
-    // 
+    //
     // package Bar
     //   class Baz
     //   end Baz;
     // end Bar;
     //
-    // class Test 
+    // class Test
     //   Foo.Bar.Baz baz1; // absolute symbol
     //   Bar.Baz baz2;     // relative symbol -- still valid!
     // end Test;
     //
-    // TODO: also make sure to handle encapsulated packages correctly. 
+    // TODO: also make sure to handle encapsulated packages correctly.
 
-    // call `resolve` on the current ModelicaProject (or library?)
-    logger.debug(`Reference '${reference.join(".")}' not in document; is this a global?`);
-    return await this.project.resolve(reference);
+    // This must be some kind of relative reference. Check all possible relative imports + the absolute import.
+    logger.debug(`Reference '${reference.join(".")}' not in document; checking references from other packages`);
+
+    // TODO: packagePath isn't correct due to the resolveLocally(node.parent, ...) stuff above.
+    //       We need the class path at the location specified by the original node. 
+    const packagePath = this.packagePath;
+    for (let i = packagePath.length; i >= 0; i--) {
+      
+      const fullPath = packagePath.slice(i).concat(reference);
+      const result = await this.project.resolve(fullPath);
+      if (result) {
+        return result;
+      }
+    }
+
+    // We couldn't resolve the reference.
+    return null;
+  }
+
+  private async findDeclarationInClass(classNode: Parser.SyntaxNode, symbol: string): Promise<ResolvedSymbol | undefined> {
+    const elementListTypes = ["element_list", "public_element_list", "protected_element_list"];
+    const elements = classNode
+      .childForFieldName("classSpecifier")
+      ?.children?.filter((child) => elementListTypes.includes(child.type))
+      ?.flatMap((element_list) => element_list.namedChildren)
+      ?.map((element) => [element, TreeSitterUtil.getDeclaredIdentifiers(element)] as const);
+
+    const field = elements?.find(([element, idents]) => element.type === "named_element" && idents.includes(symbol));
+    if (field) {
+      logger.debug(`Resolved ${symbol} to field: ${field[1]}`);
+
+      // TODO: this handles named_elements but what if it's an import clause?
+      return {
+        symbol,
+        node: field[0],
+        documentUri: this.uri,
+      };
+    }
+
+    const inheritedClassPromises = elements
+      ?.map((element) => element[0])
+      ?.filter((element) => element.type === "extends")
+      .map((node) => this.library.resolve(TreeSitterUtil.getName(node)));
+    const inheritedClasses = await Promise.all(inheritedClassPromises ?? []);
+    for (const inheritedClass of inheritedClasses) {
+      if (!inheritedClass) {
+        continue;
+      }
+
+      const decl = this.findDeclarationInClass(inheritedClass.node, symbol);
+      if (decl) {
+        return decl;
+      }
+    }
+
+    return undefined;
   }
 
   private async resolveImportClause(
     reference: string[],
     importClause: Parser.SyntaxNode,
-  ): Promise<LSP.LocationLink | null | undefined> {
+  ): Promise<ResolvedSymbol | null | undefined> {
     const importedSymbol = TreeSitterUtil.getName(importClause.childForFieldName("name")!);
 
     // wildcard import: import a.b.*;

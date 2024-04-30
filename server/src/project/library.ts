@@ -43,7 +43,7 @@ import * as miscUtil from "../util";
 import logger from '../util/logger';
 import { ModelicaDocument } from "./document";
 import { ModelicaProject } from "./project";
-import { ModelicaScope } from "./scope";
+import { ModelicaScope, ResolvedSymbol } from "./scope";
 
 export class ModelicaLibrary implements ModelicaScope {
   readonly #project: ModelicaProject;
@@ -86,7 +86,7 @@ export class ModelicaLibrary implements ModelicaScope {
     return library;
   }
 
-  public async resolve(reference: string[]): Promise<LSP.LocationLink | null> {
+  public async resolve(reference: string[]): Promise<ResolvedSymbol | null> {
     logger.debug(`searching for reference '${reference.join('.')}' in library '${this.name}'.`);
     logger.debug(`Base dir: ${this.path}`);
 

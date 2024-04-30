@@ -121,21 +121,13 @@ export default class Analyzer {
     let symbols: string[] | undefined;
     let startNode: Parser.SyntaxNode | undefined;
     if (hoveredName) {
-      symbols = TreeSitterUtil.getName(hoveredName);
-
-      // Find out which symbol in `symbols` is the hovered one
-      // and remove the ones after it, since they are not relevant
-      // TODO: this doesn't actually do anything at the moment.
-      const hoveredOffset = character - hoveredName.startPosition.column;
-      let currentOffset = 0;
-      for (let i = 0; i < symbols.length; i++) {
-        if (currentOffset > hoveredOffset) {
-          symbols = symbols.slice(0, i);
-          break;
-        }
-
-        currentOffset += symbols[i].length;
-      }
+      symbols = TreeSitterUtil.getNameIdentifiers(hoveredName)
+        .filter(
+          (node) =>
+            node.startPosition.row < line ||
+            (node.startPosition.row === line && node.startPosition.column <= character),
+        )
+        .map((node) => node.text);
 
       startNode = this.findNodeAtPosition(
         hoveredName,
@@ -160,12 +152,14 @@ export default class Analyzer {
       `Searching for declaration '${symbols.join(".")} at ${line + 1}:${character + 1} in '${uri}'`,
     );
     const result = await document.resolveLocally(symbols, startNode);
-    if (result) {
-      logger.debug(`Found declaration: `, result);
-    } else {
-      logger.debug("Didn't find declaration");
+    if (!result) {
+      logger.debug(`Didn't find declaration of ${symbols.join(".")}`);
+      return null;
     }
-    return result;
+
+    const link = TreeSitterUtil.createLocationLink(result.documentUri, result.node);
+    logger.debug(`Found declaration of ${symbols.join(".")}: `, link);
+    return link;
   }
 
   /**

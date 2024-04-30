@@ -45,16 +45,40 @@ import { SyntaxNode } from "web-tree-sitter";
 
 import { logger } from "./logger";
 
+type MaybePromise<T> = T | Promise<T>;
+
 /**
  * Recursively iterate over all nodes in a tree.
  *
  * @param node      The node to start iterating from
  * @param callback  The callback to call for each node. Return false to stop following children.
  */
-export function forEach(node: SyntaxNode, callback: (n: SyntaxNode) => void | boolean) {
-  const followChildren = callback(node) !== false;
-  if (followChildren && node.children.length) {
-    node.children.forEach((n) => forEach(n, callback));
+export function forEach(start: SyntaxNode, callback: (n: SyntaxNode) => void | boolean): void;
+export function forEach(
+  start: SyntaxNode,
+  callback: (n: SyntaxNode) => Promise<void | boolean>,
+): Promise<void>;
+export function forEach(
+  start: SyntaxNode,
+  callback: (n: SyntaxNode) => MaybePromise<void | boolean>,
+): MaybePromise<void>;
+export function forEach(
+  start: SyntaxNode,
+  callback: (n: SyntaxNode) => MaybePromise<void | boolean>,
+): MaybePromise<void> {
+  const callbackResult = callback(start);
+  if (typeof callbackResult === "object") {
+    return callbackResult.then(async (callbackResult) => {
+      const followChildren = callbackResult !== false;
+      if (followChildren && start.children.length) {
+        await Promise.all(start.children.map((n) => forEach(n, callback)));
+      }
+    });
+  }
+
+  const followChildren = callbackResult !== false;
+  if (followChildren && start.children.length) {
+    start.children.forEach((n) => forEach(n, callback));
   }
 }
 
@@ -212,22 +236,27 @@ export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
 }
 
 /**
- *
- * @param nameNode
- * @returns
+ * Converts a name `SyntaxNode` into an array of the `IDENT`s in that node.
  */
 export function getName(nameNode: SyntaxNode): string[] {
+  return getNameIdentifiers(nameNode).map((identNode) => identNode.text);
+}
+
+/**
+ * Converts a name `SyntaxNode` into an array of the `IDENT`s in that node.
+ */
+export function getNameIdentifiers(nameNode: SyntaxNode): Parser.SyntaxNode[] {
   if (nameNode.type !== "name") {
     throw new Error(`Expected a 'name' node; got '${nameNode.type}'`);
   }
 
-  const ident = nameNode.childForFieldName("identifier")!.text;
+  const identNode = nameNode.childForFieldName("identifier")!;
   const qualifierNode = nameNode.childForFieldName("qualifier");
   if (qualifierNode) {
-    const qualifier = getName(qualifierNode);
-    return [...qualifier, ident];
+    const qualifier = getNameIdentifiers(qualifierNode);
+    return [...qualifier, identNode];
   } else {
-    return [ident];
+    return [identNode];
   }
 }
 

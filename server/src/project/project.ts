@@ -38,7 +38,7 @@ import * as LSP from "vscode-languageserver";
 import url from "node:url";
 import path from "node:path";
 
-import { ModelicaScope } from "./scope";
+import { ModelicaScope, ResolvedSymbol } from "./scope";
 import { ModelicaLibrary } from "./library";
 import { ModelicaDocument } from './document';
 import * as util from '../util';
@@ -136,7 +136,7 @@ export class ModelicaProject implements ModelicaScope {
     }
   }
 
-  public async resolve(reference: string[]): Promise<LSP.LocationLink | null> {
+  public async resolve(reference: string[]): Promise<ResolvedSymbol | null> {
     logger.debug(`searching for reference '${reference.join('.')}' globally.`);
 
     for (const library of this.libraries) {

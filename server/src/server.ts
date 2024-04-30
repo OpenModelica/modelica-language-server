@@ -223,7 +223,12 @@ export class ModelicaServer {
   //        class extends Foo;
   //        end Foo;
   //
-  //    Is this a definition of Foo or a redeclaration of Foo?
+  //    What does this even mean? Is this a definition of Foo or a redeclaration of Foo?
+  //
+  // 3. Import aliases. Should this be considered to be a declaration of `Frobnicator`?  
+  //
+  //        import Frobnicator = Foo.Bar.Baz; 
+  //
 
   private async onDeclaration(params: LSP.DeclarationParams): Promise<LSP.LocationLink[]> {
     logger.debug("onDeclaration");

@@ -36,6 +36,33 @@
 import * as LSP from "vscode-languageserver/node";
 
 import { ModelicaProject } from "./project";
+import Parser from "web-tree-sitter";
+
+export interface ResolvedSymbol {
+  /**
+   * The symbol being declared.
+   */
+  symbol: string;
+
+  /**
+   * The node that defines the symbol.
+   * 
+   * For instance, in a declaration like:
+   * 
+   * ```modelica
+   * Real a, b;
+   * ```
+   * 
+   * the `node` for the `ResolvedSymbol` for `a` would be the one 
+   * representing the entire declaration of `a` and `b`. 
+   */
+  node: Parser.SyntaxNode;
+
+  /**
+   * The document in which the symbol was defined.
+   */
+  documentUri: LSP.DocumentUri;
+}
 
 export interface ModelicaScope {
   /**
@@ -49,5 +76,5 @@ export interface ModelicaScope {
    * @param reference a symbol name, relative to the scope
    * @returns the symbol declaration, or null if not found in this scope.
    */
-  resolve(reference: string[]): Promise<LSP.LocationLink | null>;
+  resolve(reference: string[]): Promise<ResolvedSymbol | null>;
 }
