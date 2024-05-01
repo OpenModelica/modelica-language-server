@@ -163,8 +163,9 @@ export function isVariableDeclaration(n: SyntaxNode): boolean {
   switch (n.type) {
     case "component_clause":
     case "component_redeclaration":
-    case "named_element":
       return true;
+    case "named_element":
+      return n.childForFieldName("classDefinition") == null;
     default:
       return false;
   }
@@ -277,12 +278,16 @@ export function getDeclarationType(node: SyntaxNode): { symbols: string[]; globa
   }
 
   return {
-    symbols: getName(typeSpecifier),
+    symbols: getName(typeSpecifier.childForFieldName("name")!),
     global: typeSpecifier.childForFieldName("global") !== null,
   };
 }
 
-export function hasIdentifier(node: SyntaxNode, identifier: string): boolean {
+export function hasIdentifier(node: SyntaxNode | null, identifier: string): boolean {
+  if (!node) {
+    return false;
+  }
+
   return getDeclaredIdentifiers(node).includes(identifier);
 }
 
@@ -298,7 +303,7 @@ export function getName(nameNode: SyntaxNode): string[] {
  */
 export function getNameIdentifiers(nameNode: SyntaxNode): Parser.SyntaxNode[] {
   if (nameNode.type !== "name") {
-    throw new Error(`Expected a 'name' node; got '${nameNode.type}'`);
+    throw new Error(`Expected a 'name' node; got '${nameNode.type}' (${nameNode.text})`);
   }
 
   const identNode = nameNode.childForFieldName("identifier")!;

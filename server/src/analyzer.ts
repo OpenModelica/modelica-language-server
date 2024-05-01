@@ -108,7 +108,6 @@ export default class Analyzer {
     }
 
     const documentOffset = document.offsetAt({ line, character });
-
     const hoveredName = this.findNodeAtPosition(
       document.tree.rootNode,
       documentOffset,
@@ -149,19 +148,24 @@ export default class Analyzer {
       `Searching for declaration '${symbols.join(".")}' at ${line + 1}:${character + 1} in '${uri}'`,
     );
 
-    const result = resolveReference(
-      document.project,
-      new UnresolvedRelativeReference(document, startNode, symbols),
-      "declaration",
-    );
-    if (!result) {
-      logger.debug(`Didn't find declaration of ${symbols.join(".")}`);
+    try {
+      const result = resolveReference(
+        document.project,
+        new UnresolvedRelativeReference(document, startNode, symbols),
+        "declaration",
+      );
+      if (!result) {
+        logger.debug(`Didn't find declaration of ${symbols.join(".")}`);
+        return null;
+      }
+
+      const link = TreeSitterUtil.createLocationLink(result.document, result.node);
+      logger.debug(`Found declaration of ${symbols.join(".")}: `, link);
+      return link;
+    } catch (ex) {
+      logger.debug("Caught exception: " + JSON.stringify((ex as Error).stack));
       return null;
     }
-
-    const link = TreeSitterUtil.createLocationLink(result.document, result.node);
-    logger.debug(`Found declaration of ${symbols.join(".")}: `, link);
-    return link;
   }
 
   /**
