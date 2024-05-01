@@ -38,13 +38,11 @@ import * as LSP from "vscode-languageserver";
 import url from "node:url";
 import path from "node:path";
 
-import { ModelicaScope, ResolvedSymbol } from "./scope";
 import { ModelicaLibrary } from "./library";
 import { ModelicaDocument } from './document';
-import * as util from '../util';
 import logger from "../util/logger";
 
-export class ModelicaProject implements ModelicaScope {
+export class ModelicaProject {
   readonly #parser: Parser;
   readonly #libraries: ModelicaLibrary[];
 
@@ -134,25 +132,6 @@ export class ModelicaProject implements ModelicaScope {
     } else {
       logger.warn(`Failed to remove document '${uri}': not loaded`);
     }
-  }
-
-  public async resolve(reference: string[]): Promise<ResolvedSymbol | null> {
-    logger.debug(`searching for reference '${reference.join('.')}' globally.`);
-
-    for (const library of this.libraries) {
-      if (reference[0] === library.name) {
-        return await library.resolve(reference);
-      }
-    }
-
-    // TODO: check annotations
-    // We don't need to resolve builtins like Boolean because they aren't
-    // declared anywhere.
-
-    // TODO: check... array subscripts? can probably skip that
-
-    logger.debug(`Reference '${reference.join('.')}' not found in project.`);
-    return null;
   }
 
   public get parser(): Parser {

@@ -44,6 +44,7 @@ import Parser from "web-tree-sitter";
 import { SyntaxNode } from "web-tree-sitter";
 
 import { logger } from "./logger";
+import { TextDocument } from "vscode-languageserver-textdocument";
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -152,6 +153,40 @@ export function isDefinition(n: SyntaxNode): boolean {
   }
 }
 
+/**
+ * Tell if a node is a variable declaration.
+ *
+ * @param n Node of tree
+ * @returns `true` if node is a variable declaration, `false` otherwise.
+ */
+export function isVariableDeclaration(n: SyntaxNode): boolean {
+  switch (n.type) {
+    case "component_clause":
+    case "component_redeclaration":
+    case "named_element":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Tell if a node is an element list.
+ *
+ * @param n Node of tree
+ * @returns `true` if node is an element list, `false` otherwise.
+ */
+export function isElementList(n: SyntaxNode): boolean {
+  switch (n.type) {
+    case "element_list":
+    case "public_element_list":
+    case "protected_element_list":
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function findParent(
   start: SyntaxNode,
   predicate: (n: SyntaxNode) => boolean,
@@ -235,6 +270,22 @@ export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
   }
 }
 
+export function getDeclarationType(node: SyntaxNode): { symbols: string[]; global: boolean } {
+  const typeSpecifier = findFirst(node, (child) => child.type === "type_specifier");
+  if (!typeSpecifier) {
+    throw new Error("Node does not contain a type_specifier");
+  }
+
+  return {
+    symbols: getName(typeSpecifier),
+    global: typeSpecifier.childForFieldName("global") !== null,
+  };
+}
+
+export function hasIdentifier(node: SyntaxNode, identifier: string): boolean {
+  return getDeclaredIdentifiers(node).includes(identifier);
+}
+
 /**
  * Converts a name `SyntaxNode` into an array of the `IDENT`s in that node.
  */
@@ -288,12 +339,20 @@ export function pointToPosition(point: Parser.Point): LSP.Position {
 }
 
 export function createLocationLink(
+  document: TextDocument,
+  node: Parser.SyntaxNode,
+): LSP.LocationLink;
+export function createLocationLink(
   documentUri: LSP.DocumentUri,
+  node: Parser.SyntaxNode,
+): LSP.LocationLink;
+export function createLocationLink(
+  document: TextDocument | LSP.DocumentUri,
   node: Parser.SyntaxNode,
 ): LSP.LocationLink {
   // TODO: properly set targetSelectionRange (e.g. the name of a function or variable).
   return {
-    targetUri: documentUri,
+    targetUri: typeof document === "string" ? document : document.uri,
     targetRange: {
       start: pointToPosition(node.startPosition),
       end: pointToPosition(node.endPosition),

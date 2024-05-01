@@ -40,18 +40,15 @@
  */
 
 import * as LSP from "vscode-languageserver/node";
-import { TextDocument } from "vscode-languageserver-textdocument";
-
 import Parser from "web-tree-sitter";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import * as url from "node:url";
 
-import { getAllDeclarationsInTree } from "./util/declarations";
-import { logger } from "./util/logger";
-import * as TreeSitterUtil from "./util/tree-sitter";
+import { UnresolvedRelativeReference } from "./analysis/reference";
+import resolveReference from "./analysis/resolveReference";
 import { ModelicaProject } from "./project/project";
 import { ModelicaLibrary } from "./project/library";
+import { getAllDeclarationsInTree } from "./util/declarations";
+import logger from "./util/logger";
+import * as TreeSitterUtil from "./util/tree-sitter";
 
 export default class Analyzer {
   #project: ModelicaProject;
@@ -149,15 +146,20 @@ export default class Analyzer {
     }
 
     logger.debug(
-      `Searching for declaration '${symbols.join(".")} at ${line + 1}:${character + 1} in '${uri}'`,
+      `Searching for declaration '${symbols.join(".")}' at ${line + 1}:${character + 1} in '${uri}'`,
     );
-    const result = await document.resolveLocally(symbols, startNode);
+
+    const result = resolveReference(
+      document.project,
+      new UnresolvedRelativeReference(document, startNode, symbols),
+      "declaration",
+    );
     if (!result) {
       logger.debug(`Didn't find declaration of ${symbols.join(".")}`);
       return null;
     }
 
-    const link = TreeSitterUtil.createLocationLink(result.documentUri, result.node);
+    const link = TreeSitterUtil.createLocationLink(result.document, result.node);
     logger.debug(`Found declaration of ${symbols.join(".")}: `, link);
     return link;
   }

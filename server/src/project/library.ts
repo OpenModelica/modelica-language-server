@@ -39,13 +39,11 @@ import * as path from "node:path";
 import * as util from "node:util";
 import * as url from "node:url";
 
-import * as miscUtil from "../util";
 import logger from '../util/logger';
 import { ModelicaDocument } from "./document";
 import { ModelicaProject } from "./project";
-import { ModelicaScope, ResolvedSymbol } from "./scope";
 
-export class ModelicaLibrary implements ModelicaScope {
+export class ModelicaLibrary {
   readonly #project: ModelicaProject;
   readonly #uri: string;
   readonly #documents: Map<LSP.DocumentUri, ModelicaDocument>;
@@ -84,57 +82,6 @@ export class ModelicaLibrary implements ModelicaScope {
 
     logger.debug(`Loaded ${library.#documents.size} documents`);
     return library;
-  }
-
-  public async resolve(reference: string[]): Promise<ResolvedSymbol | null> {
-    logger.debug(`searching for reference '${reference.join('.')}' in library '${this.name}'.`);
-    logger.debug(`Base dir: ${this.path}`);
-
-    if (this.#documents.size === 0) {
-      logger.debug(`No documents in library; giving up`);
-      return null;
-    }
-
-    let bestDocuments: ModelicaDocument[] = [];
-    let bestPathLength = -1;
-    for (const entry of this.#documents) {
-      const [_uri, document] = entry;
-      const packagePath = document.packagePath;
-
-      // TODO: the package path should be relative to the root package.mo file
-      // but in the case of workspaces, it doesn't have to be. This ruins the
-      // algorithm we use here.
-      //
-      // Since a workspace can technically store many libraries, we need to treat
-      // them differently. A workspace should be considered to be a "library root"
-      // that can contain multiple libraries. We should scan the workspace for
-      // libraries upon creating it, and when adding files to the workspace,
-      // we should figure out which library it belongs to.
-      // TODO: how do we handle the case in which a file belongs to no libraries?
-
-      logger.debug(`package: ${packagePath}\t\treference: ${reference}`);
-      const pathLength = miscUtil.getOverlappingLength(packagePath, reference);
-      if (pathLength > bestPathLength) {
-        bestDocuments = [document];
-        bestPathLength = pathLength;
-      } else if (pathLength === bestPathLength) {
-        bestDocuments.push(document);
-      }
-    }
-
-    // logger.debug(`Chose these documents as the best matches:`);
-    // for (const document of bestDocuments) {
-    //   logger.debug(`  - ${document.uri}`);
-    // }
-
-    for (const document of bestDocuments) {
-      const result = await document.resolve(reference);
-      if (result) {
-        return result;
-      }
-    }
-
-    return null;
   }
 
   public get name(): string {
