@@ -152,6 +152,13 @@ function findReferenceInDocument(
   // TODO: check subpackages
   logger.warn("NOT checking subpackages!");
 
+  const referenceWithPackagePath = new UnresolvedAbsoluteReference(
+    [...reference.document.packagePath, ...reference.symbols]
+  );
+  if (resolveAbsoluteReference(reference.document.project, referenceWithPackagePath)) {
+    return referenceWithPackagePath;
+  }
+
   logger.debug("Not found in documment. This reference is either global or undefined.");
   return new UnresolvedAbsoluteReference(reference.symbols);
 }
