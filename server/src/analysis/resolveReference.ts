@@ -91,8 +91,6 @@ function absolutize(
     ...ancestors,
     ...local.symbols,
   ]);
-
-  return null;
 }
 
 /**
@@ -108,7 +106,7 @@ function absolutize(
 function findReferenceInDocument(
   reference: UnresolvedRelativeReference,
 ): UnresolvedReference | null {
-  // TODO: Function declarations
+  // TODO: Function declarations (do they even exist?)
   logger.warn("NOT checking for functions!");
 
   logger.debug("Checking for local class or variable...");
@@ -195,27 +193,23 @@ function findDeclarationInClass(
     return new UnresolvedRelativeReference(document, field[0], symbols);
   }
 
-  const superclasses = elements
+  const extendClauses = elements
     .map(([element, _idents]) => element)
-    .filter((element) => element.type === "extends")
-    .map((node) => {
-      const superclassRef = new UnresolvedAbsoluteReference(TreeSitterUtil.getName(node));
-      logger.debug(`Resolving superclass ${superclassRef} (of ${TreeSitterUtil.getDeclaredIdentifiers(classNode)[0]})`);
+    .filter((element) => element.type === "extends_clause");
+  for (const extendClause of extendClauses) {
+    const unresolvedSuperclass = new UnresolvedAbsoluteReference(TreeSitterUtil.getDeclaredIdentifiers(extendClause));
+    logger.debug(`Resolving superclass ${unresolvedSuperclass} (of ${TreeSitterUtil.getDeclaredIdentifiers(classNode)[0]})`);
 
-      const resolvedSuperclassRef = resolveAbsoluteReference(document.project, superclassRef);
-      if (!resolvedSuperclassRef) {
-        logger.warn(`Could not find superclass ${superclassRef}`);
-      }
+    const superclass = resolveAbsoluteReference(document.project, unresolvedSuperclass);
+    if (!superclass) {
+      logger.warn(`Could not find superclass ${unresolvedSuperclass}`);
+      continue;
+    }
 
-      return resolvedSuperclassRef;
-    })
-    .filter((superclass) => superclass != null) as ResolvedReference[];
-
-  for (const superclass of superclasses) {
     logger.debug(`Checking superclass ${superclass}`);
-    const decl = findDeclarationInClass(document, superclass.node, symbols);
+    const decl = findDeclarationInClass(superclass.document, superclass.node, symbols);
     if (decl) {
-      logger.debug(`Declaration ${decl} found in superclass ${superclasses}`);
+      logger.debug(`Declaration ${decl} found in superclass ${superclass}`);
       return decl;
     }
   }
@@ -363,22 +357,6 @@ function resolveNext(
   const nextSymbol = reference.symbols[nextSymbolIndex];
   logger.debug(`Resolve next: ${nextSymbol} (alreadyResolved: ${alreadyResolved.node.type} with ident ${TreeSitterUtil.getIdentifier(alreadyResolved.node)})`);
 
-  // If nextSymbol is in alreadyResolved.node:
-  //    return the declaration
-  // TODO: Variable declarations may be nested inside an element list
-  const child = findDeclarationInClass(
-    alreadyResolved.document,
-    alreadyResolved.node,
-    reference.symbols.slice(nextSymbolIndex),
-  );
-  if (child) {
-    return new ResolvedReference(
-      alreadyResolved!.document,
-      child.node,
-      reference.symbols.slice(0, nextSymbolIndex + 1)
-    );
-  }
-
   // If there is a document for nextSymbol blablabla
   const dirName = path.dirname(alreadyResolved.document.path);
   const potentialPaths = [
@@ -400,6 +378,22 @@ function resolveNext(
     return new ResolvedReference(
       document,
       packageClass,
+      reference.symbols.slice(0, nextSymbolIndex + 1)
+    );
+  }
+
+  // If nextSymbol is in alreadyResolved.node:
+  //    return the declaration
+  // TODO: Variable declarations may be nested inside an element list
+  const child = findDeclarationInClass(
+    alreadyResolved.document,
+    alreadyResolved.node,
+    reference.symbols.slice(nextSymbolIndex),
+  );
+  if (child) {
+    return new ResolvedReference(
+      child.document,
+      child.node,
       reference.symbols.slice(0, nextSymbolIndex + 1)
     );
   }

@@ -230,6 +230,8 @@ export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
 
   // TODO: does this support all desired node types? Are we considering too many nodes?
   switch (node.type) {
+    case "extends_clause":
+      return getName(node.childForFieldName("typeSpecifier")!.childForFieldName("name")!);
     case "declaration":
     case "derivative_class_specifier":
     case "enumeration_class_specifier":
