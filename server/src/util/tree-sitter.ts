@@ -230,8 +230,6 @@ export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
 
   // TODO: does this support all desired node types? Are we considering too many nodes?
   switch (node.type) {
-    case "extends_clause":
-      return getName(node.childForFieldName("typeSpecifier")!.childForFieldName("name")!);
     case "declaration":
     case "derivative_class_specifier":
     case "enumeration_class_specifier":
@@ -273,18 +271,6 @@ export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
   }
 }
 
-export function getDeclarationType(node: SyntaxNode): { symbols: string[]; global: boolean } {
-  const typeSpecifier = findFirst(node, (child) => child.type === "type_specifier");
-  if (!typeSpecifier) {
-    throw new Error("Node does not contain a type_specifier");
-  }
-
-  return {
-    symbols: getName(typeSpecifier.childForFieldName("name")!),
-    global: typeSpecifier.childForFieldName("global") !== null,
-  };
-}
-
 export function hasIdentifier(node: SyntaxNode | null, identifier: string): boolean {
   if (!node) {
     return false;
@@ -293,17 +279,58 @@ export function hasIdentifier(node: SyntaxNode | null, identifier: string): bool
   return getDeclaredIdentifiers(node).includes(identifier);
 }
 
-/**
- * Converts a name `SyntaxNode` into an array of the `IDENT`s in that node.
- */
-export function getName(nameNode: SyntaxNode): string[] {
-  return getNameIdentifiers(nameNode).map((identNode) => identNode.text);
+export interface TypeSpecifier {
+  isGlobal: boolean;
+  symbols: string[];
+  symbolNodes: SyntaxNode[];
+}
+
+export function getDeclaredType(node: SyntaxNode): TypeSpecifier {
+  switch (node.type) {
+    case "type_specifier": {
+      const isGlobal = node.childForFieldName("global") !== null;
+      const name = node.childForFieldName("name")!;
+      const symbolNodes = getNameIdentifiers(name);
+      return {
+        isGlobal,
+        symbols: symbolNodes.map((id) => id.text),
+        symbolNodes,
+      };
+    }
+    case "name": {
+      const symbolNodes = getNameIdentifiers(node);
+      return {
+        isGlobal: false,
+        symbols: symbolNodes.map((id) => id.text),
+        symbolNodes,
+      };
+    }
+    case "IDENT":
+      return {
+        isGlobal: false,
+        symbols: [node.text],
+        symbolNodes: [node],
+      };
+    default: {
+      const typeSpecifier = findFirst(node, (child) => child.type === "type_specifier");
+      if (typeSpecifier) {
+        return getDeclaredType(typeSpecifier);
+      }
+
+      const name = findFirst(node, (child) => child.type === "name");
+      if (name) {
+        return getDeclaredType(name);
+      }
+
+      throw new Error("Syntax node does not contain a type_specifier or name");
+    }
+  }
 }
 
 /**
  * Converts a name `SyntaxNode` into an array of the `IDENT`s in that node.
  */
-export function getNameIdentifiers(nameNode: SyntaxNode): Parser.SyntaxNode[] {
+function getNameIdentifiers(nameNode: SyntaxNode): Parser.SyntaxNode[] {
   if (nameNode.type !== "name") {
     throw new Error(`Expected a 'name' node; got '${nameNode.type}' (${nameNode.text})`);
   }

@@ -65,16 +65,16 @@ export class ModelicaProject {
    * @param uri file:// uri pointing to the document
    * @returns the document, or `undefined` if no such document exists
    */
-  public getDocument(uri: LSP.DocumentUri): ModelicaDocument | undefined {
+  public getDocument(documentPath: string): ModelicaDocument | undefined {
     for (const library of this.#libraries) {
-      const doc = library.documents.get(uri);
+      const doc = library.documents.get(documentPath);
       if (doc) {
         logger.debug(`Found document: ${doc.path}`);
         return doc;
       }
     }
 
-    logger.debug(`Couldn't find document: ${uri}`);
+    logger.debug(`Couldn't find document: ${documentPath}`);
 
     return undefined;
   }
@@ -82,10 +82,9 @@ export class ModelicaProject {
   /**
    * Adds a new document to the LSP.
    */
-  public async addDocument(uri: LSP.DocumentUri): Promise<void> {
-    logger.info(`Adding document at '${uri}'...`);
+  public async addDocument(documentPath: string): Promise<void> {
+    logger.info(`Adding document at '${documentPath}'...`);
 
-    const documentPath = url.fileURLToPath(uri);
     for (const library of this.#libraries) {
       const relative = path.relative(library.path, documentPath);
       const isSubdirectory = relative && !relative.startsWith("..") && !path.isAbsolute(relative);
@@ -93,13 +92,13 @@ export class ModelicaProject {
       // Assume that files can't be inside multiple libraries at the same time
       if (isSubdirectory) {
         const document = await ModelicaDocument.load(library, documentPath);
-        library.documents.set(uri, document);
-        logger.debug(`Added document: ${uri}`);
+        library.documents.set(documentPath, document);
+        logger.debug(`Added document: ${documentPath}`);
         return;
       }
     }
 
-    throw new Error(`Failed to add document '${uri}': not a part of any libraries.`);
+    throw new Error(`Failed to add document '${documentPath}': not a part of any libraries.`);
   }
 
   /**
@@ -108,29 +107,29 @@ export class ModelicaProject {
    * @param text the modification
    * @param range range to update, or undefined to replace the whole file
    */
-  public updateDocument(uri: LSP.DocumentUri, text: string, range?: LSP.Range): void {
-    logger.debug(`Updating document at '${uri}'...`);
+  public updateDocument(documentPath: string, text: string, range?: LSP.Range): void {
+    logger.debug(`Updating document at '${documentPath}'...`);
 
-    const doc = this.getDocument(uri);
+    const doc = this.getDocument(documentPath);
     if (doc) {
       doc.update(text, range);
-      logger.debug(`Updated document '${uri}'`);
+      logger.debug(`Updated document '${documentPath}'`);
     } else {
-      logger.warn(`Failed to update document '${uri}': not loaded`);
+      logger.warn(`Failed to update document '${documentPath}': not loaded`);
     }
   }
 
   /**
    * Removes a document from the cache.
    */
-  public removeDocument(uri: LSP.DocumentUri): void {
-    logger.info(`Removing document at '${uri}'...`);
+  public removeDocument(documentPath: string): void {
+    logger.info(`Removing document at '${documentPath}'...`);
 
-    const doc = this.getDocument(uri);
+    const doc = this.getDocument(documentPath);
     if (doc) {
-      doc.library.documents.delete(uri);
+      doc.library.documents.delete(documentPath);
     } else {
-      logger.warn(`Failed to remove document '${uri}': not loaded`);
+      logger.warn(`Failed to remove document '${documentPath}': not loaded`);
     }
   }
 

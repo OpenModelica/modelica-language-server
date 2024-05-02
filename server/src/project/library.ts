@@ -37,7 +37,6 @@ import * as LSP from "vscode-languageserver";
 import * as fsWalk from "@nodelib/fs.walk";
 import * as path from "node:path";
 import * as util from "node:util";
-import * as url from "node:url";
 
 import logger from '../util/logger';
 import { ModelicaDocument } from "./document";
@@ -45,39 +44,43 @@ import { ModelicaProject } from "./project";
 
 export class ModelicaLibrary {
   readonly #project: ModelicaProject;
-  readonly #uri: string;
-  readonly #documents: Map<LSP.DocumentUri, ModelicaDocument>;
+  readonly #documents: Map<string, ModelicaDocument>;
   readonly #isWorkspace: boolean;
+  #path: string;
 
-  private constructor(project: ModelicaProject, uri: LSP.URI, isWorkspace: boolean) {
+  private constructor(project: ModelicaProject, libraryPath: string, isWorkspace: boolean) {
     this.#project = project;
-    this.#uri = uri;
+    this.#path = libraryPath,
     this.#documents = new Map();
     this.#isWorkspace = isWorkspace;
   }
 
   public static async load(
     project: ModelicaProject,
-    uri: LSP.URI,
+    libraryPath: string,
     isWorkspace: boolean,
   ): Promise<ModelicaLibrary> {
-    logger.info(`Loading ${isWorkspace ? 'workspace' : 'library'} at '${uri}'...`);
+    logger.info(`Loading ${isWorkspace ? 'workspace' : 'library'} at '${libraryPath}'...`);
+
+    const library = new ModelicaLibrary(project, libraryPath, isWorkspace);
+    const workspaceRootDocument = await ModelicaDocument.load(library, path.join(libraryPath, "package.mo"));
+
+    // Find the root path of the library and update library.#path.
+    // It might have been set incorrectly if we opened a child folder.
+    for (let i = 0; i < workspaceRootDocument.packagePath.length - 1; i++) {
+      library.#path = path.dirname(library.#path);
+    }
+
+    logger.debug(`Set library path to ${library.path}`);
 
     const walk = util.promisify(fsWalk.walk);
-    const entries = await walk(url.fileURLToPath(uri), {
+    const entries = await walk(library.#path, {
       entryFilter: (entry) => !!entry.name.match(/.*\.mo/) && !entry.dirent.isDirectory(),
     });
 
-    const library = new ModelicaLibrary(project, uri, isWorkspace);
     for (const entry of entries) {
-      let documentUri = url.pathToFileURL(entry.path).href;
-      // Note: LSP sends us file uris containing '%3A' instead of ':', but
-      // the node pathToFileURL uses ':' anyways. Manually fix this here.
-      // This is a bit hacky but we should ideally only be working with the URIs from LSP anyways.
-      documentUri = documentUri.slice(0, 5) + documentUri.slice(5).replace(":", "%3A");
-
-      const document = await ModelicaDocument.load(library, documentUri);
-      library.#documents.set(documentUri, document);
+      const document = await ModelicaDocument.load(library, entry.path);
+      library.#documents.set(entry.path, document);
     }
 
     logger.debug(`Loaded ${library.#documents.size} documents`);
@@ -89,18 +92,14 @@ export class ModelicaLibrary {
   }
 
   public get path(): string {
-    return url.fileURLToPath(this.#uri);
-  }
-
-  public get uri(): string {
-    return this.#uri;
+    return this.#path;
   }
 
   public get project(): ModelicaProject {
     return this.#project;
   }
 
-  public get documents(): Map<LSP.DocumentUri, ModelicaDocument> {
+  public get documents(): Map<string, ModelicaDocument> {
     return this.#documents;
   }
 

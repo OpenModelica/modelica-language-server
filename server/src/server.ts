@@ -50,6 +50,7 @@ import * as url from "node:url";
 import { initializeParser } from "./parser";
 import Analyzer from "./analyzer";
 import { logger, setLogConnection, setLogLevel } from "./util/logger";
+import { uriToPath } from './util';
 
 /**
  * ModelicaServer collection all the important bits and bobs.
@@ -179,7 +180,7 @@ export class ModelicaServer {
           break;
         case LSP.FileChangeType.Changed: {
           // TODO: incremental?
-          const path = url.fileURLToPath(change.uri);
+          const path = uriToPath(change.uri);
           const content = await fs.readFile(path, "utf-8");
           this.analyzer.updateDocument(change.uri, content);
           break;

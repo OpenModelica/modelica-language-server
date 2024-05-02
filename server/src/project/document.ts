@@ -44,6 +44,7 @@ import { logger } from "../util/logger";
 import { positionToPoint } from "../util/tree-sitter";
 import { ModelicaLibrary } from "./library";
 import { ModelicaProject } from "./project";
+import { pathToUri, uriToPath } from "../util";
 
 export class ModelicaDocument implements TextDocument {
   readonly #library: ModelicaLibrary;
@@ -58,16 +59,20 @@ export class ModelicaDocument implements TextDocument {
 
   public static async load(
     library: ModelicaLibrary,
-    uri: LSP.DocumentUri,
+    documentPath: string,
   ): Promise<ModelicaDocument> {
-    logger.debug(`Loading document at '${uri}'...`);
+    logger.debug(`Loading document at '${documentPath}'...`);
 
-    const content = await fs.readFile(url.fileURLToPath(uri), "utf-8");
+    const content = await fs.readFile(documentPath, "utf-8");
     // On caching: see issue https://github.com/tree-sitter/tree-sitter/issues/824
     // TL;DR: it's faster to re-parse the content than it is to deserialize the cached tree.
     const tree = library.project.parser.parse(content);
 
-    return new ModelicaDocument(library, TextDocument.create(uri, "modelica", 0, content), tree);
+    return new ModelicaDocument(
+      library,
+      TextDocument.create(pathToUri(documentPath), "modelica", 0, content),
+      tree
+    );
   }
 
   public async update(text: string, range?: LSP.Range): Promise<void> {
@@ -128,12 +133,12 @@ export class ModelicaDocument implements TextDocument {
     return this.#document.offsetAt(position);
   }
 
-  public get uri(): string {
+  public get uri(): LSP.DocumentUri {
     return this.#document.uri;
   }
 
   public get path(): string {
-    return url.fileURLToPath(this.uri);
+    return uriToPath(this.#document.uri);
   }
 
   public get languageId(): string {
@@ -158,6 +163,10 @@ export class ModelicaDocument implements TextDocument {
     }
 
     return packagePath;
+  }
+
+  public get within(): string[] {
+    return this.packagePath.slice(0, -1);
   }
 
   public get project(): ModelicaProject {

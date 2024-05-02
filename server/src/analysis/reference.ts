@@ -39,11 +39,11 @@ export class UnresolvedRelativeReference extends BaseUnresolvedReference {
     return false;
   }
 
-  public get [Symbol.toStringTag](): string {
+  public toString(): string {
     const start = this.node.startPosition;
     const pos = `${start.row + 1}:${start.column + 1}`;
 
-    return `${this.symbols.join(".")} at ${pos} in "${this.document.uri}"`;
+    return `?${this.symbols.join(".")} at ${pos} in "${this.document.path}"`;
   }
 }
 
@@ -56,8 +56,8 @@ export class UnresolvedAbsoluteReference extends BaseUnresolvedReference {
     return true;
   }
 
-  public get [Symbol.toStringTag](): string {
-    return `.${this.symbols.join(".")}`;
+  public toString(): string {
+    return `?<global>.${this.symbols.join(".")}`;
   }
 }
 
@@ -89,7 +89,7 @@ export class ResolvedReference {
     this.symbols = symbols;
   }
 
-  public get [Symbol.toStringTag](): string {
-    return `.${this.symbols.join(".")}`;
+  public toString(): string {
+    return `<global>.${this.symbols.join(".")}`;
   }
 }

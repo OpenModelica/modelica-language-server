@@ -41,11 +41,16 @@
 
 import * as LSP from "vscode-languageserver/node";
 import Parser from "web-tree-sitter";
+import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
+import * as path from "node:path";
+import * as url from "node:url";
 
 import { UnresolvedRelativeReference } from "./analysis/reference";
 import resolveReference from "./analysis/resolveReference";
 import { ModelicaProject } from "./project/project";
 import { ModelicaLibrary } from "./project/library";
+import { uriToPath } from "./util";
 import { getAllDeclarationsInTree } from "./util/declarations";
 import logger from "./util/logger";
 import * as TreeSitterUtil from "./util/tree-sitter";
@@ -58,8 +63,27 @@ export default class Analyzer {
   }
 
   public async loadLibrary(uri: LSP.URI, isWorkspace: boolean): Promise<void> {
-    const workspace = await ModelicaLibrary.load(this.#project, uri, isWorkspace);
-    this.#project.addLibrary(workspace);
+    const isLibrary = (folderPath: string) =>
+      fsSync.existsSync(path.join(folderPath, "package.mo"));
+
+    const libraryPath = uriToPath(uri);
+    if (!isWorkspace || isLibrary(libraryPath)) {
+      const lib = await ModelicaLibrary.load(this.#project, libraryPath, isWorkspace);
+      this.#project.addLibrary(lib);
+      return;
+    }
+
+    // TODO: go deeper... something like `TreeSitterUtil.forEach` but for files
+    //       would be good here
+    for (const nestedRelative of await fs.readdir(libraryPath)) {
+      const nested = path.resolve(nestedRelative);
+      if (!isLibrary(nested)) {
+        continue;
+      }
+
+      const library = await ModelicaLibrary.load(this.#project, nested, isWorkspace);
+      this.#project.addLibrary(library);
+    }
   }
 
   public addDocument(uri: LSP.DocumentUri): void {
@@ -80,7 +104,8 @@ export default class Analyzer {
    * TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found in a given text document.
    */
   public getDeclarationsForUri(uri: LSP.DocumentUri): LSP.SymbolInformation[] {
-    const tree = this.#project.getDocument(uri)?.tree;
+    const path = uriToPath(uri);
+    const tree = this.#project.getDocument(path)?.tree;
 
     if (!tree?.rootNode) {
       return [];
@@ -94,9 +119,10 @@ export default class Analyzer {
     line: number,
     character: number,
   ): Promise<LSP.LocationLink | null> {
-    logger.debug(`Searching for declaration of symbol at ${line + 1}:${character + 1} in '${uri}'`);
+    const path = uriToPath(uri);
+    logger.debug(`Searching for declaration of symbol at ${line + 1}:${character + 1} in '${path}'`);
 
-    const document = this.#project.getDocument(uri);
+    const document = this.#project.getDocument(path);
     if (!document) {
       logger.warn(`Couldn't find declaration: document not loaded.`);
       return null;
@@ -108,6 +134,8 @@ export default class Analyzer {
     }
 
     const documentOffset = document.offsetAt({ line, character });
+
+    // TODO: we should check for a `type_specifier` first, then a `name`, then an `ident`
     const hoveredName = this.findNodeAtPosition(
       document.tree.rootNode,
       documentOffset,
@@ -117,7 +145,7 @@ export default class Analyzer {
     let symbols: string[] | undefined;
     let startNode: Parser.SyntaxNode | undefined;
     if (hoveredName) {
-      symbols = TreeSitterUtil.getNameIdentifiers(hoveredName)
+      symbols = TreeSitterUtil.getDeclaredType(hoveredName).symbolNodes
         .filter(
           (node) =>
             node.startPosition.row < line ||
@@ -140,12 +168,12 @@ export default class Analyzer {
     }
 
     if (!startNode || !symbols) {
-      logger.info(`Tried to find declaration in '${uri}', but not hovering on any identifiers`);
+      logger.info(`Tried to find declaration in '${path}', but not hovering on any identifiers`);
       return null;
     }
 
     logger.debug(
-      `Searching for declaration '${symbols.join(".")}' at ${line + 1}:${character + 1} in '${uri}'`,
+      `Searching for declaration '${symbols.join(".")}' at ${line + 1}:${character + 1} in '${path}'`,
     );
 
     try {
