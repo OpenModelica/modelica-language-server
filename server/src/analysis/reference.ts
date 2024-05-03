@@ -1,18 +1,23 @@
 import { ModelicaDocument } from "../project/document";
 import Parser from "web-tree-sitter";
 
+export type ReferenceKind = "class" | "variable";
+
 export abstract class BaseUnresolvedReference {
   /**
    * The path to the symbol reference.
    */
   public readonly symbols: string[];
 
-  public constructor(symbols: string[]) {
+  public readonly kind: ReferenceKind | undefined;
+
+  public constructor(symbols: string[], kind?: ReferenceKind) {
     if (symbols.length === 0) {
       throw new Error("Symbols length must be greater tham 0");
     }
 
     this.symbols = symbols;
+    this.kind = kind;
   }
 
   public abstract isAbsolute(): this is UnresolvedAbsoluteReference;
@@ -29,8 +34,13 @@ export class UnresolvedRelativeReference extends BaseUnresolvedReference {
    */
   public readonly node: Parser.SyntaxNode;
 
-  public constructor(document: ModelicaDocument, node: Parser.SyntaxNode, symbols: string[]) {
-    super(symbols);
+  public constructor(
+    document: ModelicaDocument,
+    node: Parser.SyntaxNode,
+    symbols: string[],
+    kind?: ReferenceKind,
+  ) {
+    super(symbols, kind);
     this.document = document;
     this.node = node;
   }
@@ -41,15 +51,20 @@ export class UnresolvedRelativeReference extends BaseUnresolvedReference {
 
   public toString(): string {
     const start = this.node.startPosition;
-    const pos = `${start.row + 1}:${start.column + 1}`;
-
-    return `?${this.symbols.join(".")} at ${pos} in "${this.document.path}"`;
+    return (
+      `UnresolvedReference { ` +
+      `symbols: ${this.symbols.join(".")}, ` +
+      `kind: ${this.kind}, ` +
+      `position: ${start.row + 1}:${start.column + 1}, ` +
+      `document: "${this.document.path}" ` +
+      `}`
+    );
   }
 }
 
 export class UnresolvedAbsoluteReference extends BaseUnresolvedReference {
-  public constructor(symbols: string[]) {
-    super(symbols);
+  public constructor(symbols: string[], kind?: ReferenceKind) {
+    super(symbols, kind);
   }
 
   public isAbsolute(): this is UnresolvedAbsoluteReference {
@@ -57,7 +72,12 @@ export class UnresolvedAbsoluteReference extends BaseUnresolvedReference {
   }
 
   public toString(): string {
-    return `?<global>.${this.symbols.join(".")}`;
+    return (
+      `UnresolvedReference { ` +
+      `symbols: <global>.${this.symbols.join(".")}, ` +
+      `kind: ${this.kind} ` +
+      `}`
+    );
   }
 }
 
@@ -79,7 +99,14 @@ export class ResolvedReference {
    */
   readonly symbols: string[];
 
-  public constructor(document: ModelicaDocument, node: Parser.SyntaxNode, symbols: string[]) {
+  readonly kind: ReferenceKind;
+
+  public constructor(
+    document: ModelicaDocument,
+    node: Parser.SyntaxNode,
+    symbols: string[],
+    kind: ReferenceKind,
+  ) {
     if (symbols.length === 0) {
       throw new Error("Symbols length must be greater than 0.");
     }
@@ -87,9 +114,10 @@ export class ResolvedReference {
     this.document = document;
     this.node = node;
     this.symbols = symbols;
+    this.kind = kind;
   }
 
   public toString(): string {
-    return `<global>.${this.symbols.join(".")}`;
+    return `Reference { symbols: <global>.${this.symbols.join(".")}, kind: ${this.kind} }`;
   }
 }
