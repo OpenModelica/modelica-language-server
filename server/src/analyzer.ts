@@ -87,15 +87,15 @@ export default class Analyzer {
   }
 
   public addDocument(uri: LSP.DocumentUri): void {
-    this.#project.addDocument(uri);
+    this.#project.addDocument(uriToPath(uri));
   }
 
   public updateDocument(uri: LSP.DocumentUri, text: string, range?: LSP.Range): void {
-    this.#project.updateDocument(uri, text, range);
+    this.#project.updateDocument(uriToPath(uri), text, range);
   }
 
   public removeDocument(uri: LSP.DocumentUri): void {
-    this.#project.removeDocument(uri);
+    this.#project.removeDocument(uriToPath(uri));
   }
 
   /**
