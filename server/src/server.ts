@@ -121,24 +121,10 @@ export class ModelicaServer {
     connection.onShutdown(this.onShutdown.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
     connection.onInitialized(this.onInitialized.bind(this));
+    connection.onDidChangeTextDocument(this.onDidChangeTextDocument.bind(this));
     connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
     connection.onDeclaration(this.onDeclaration.bind(this));
     connection.onDefinition(this.onDefinition.bind(this));
-
-    // The content of a text document has changed. This event is emitted
-    // when the text document first opened or when its content has changed.
-    this.documents.onDidChangeContent((params) => {
-      logger.debug("onDidChangeContent");
-
-      // We need to define some timing to wait some time or until whitespace is typed
-      // to update the tree or we are doing this on every key stroke
-
-      // TODO: this gives us a document instance managed by this.document
-      //       However, we make our documents ourselves. How do we get that to work?
-      //       Do we just not use the TextDocuments class?
-
-      // TODO: actually reanalyze
-    });
   }
 
   private async onInitialized(): Promise<void> {
@@ -164,6 +150,13 @@ export class ModelicaServer {
 
   private async onShutdown(): Promise<void> {
     logger.debug("onShutdown");
+  }
+
+  private async onDidChangeTextDocument(params: LSP.DidChangeTextDocumentParams): Promise<void> {
+      logger.debug("onDidChangeTextDocument");
+      for (const change of params.contentChanges) {
+        this.analyzer.updateDocument(params.textDocument.uri, change.text);
+      }
   }
 
   private async onDidChangeWatchedFiles(params: LSP.DidChangeWatchedFilesParams): Promise<void> {
