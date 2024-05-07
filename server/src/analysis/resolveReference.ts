@@ -88,7 +88,10 @@ function* getAbsoluteReferenceCandidates(
 
     const classPath = [...relativeReference.document.within, ...ancestors];
     while (true) {
-      yield new UnresolvedAbsoluteReference([...classPath, ...relativeReference.symbols], relativeReference.kind);
+      yield new UnresolvedAbsoluteReference(
+        [...classPath, ...relativeReference.symbols],
+        relativeReference.kind,
+      );
       if (classPath.length === 0) {
         break;
       }
@@ -213,7 +216,7 @@ function* findReferenceInDocument(
     return;
   }
 
-  logger.debug("Not found in document. May be a global?");
+  logger.debug(`Not found in document. May be a global? ${reference}`);
   yield undefined;
   return;
 }
@@ -277,7 +280,7 @@ function findDeclarationInClass(
       .map(([element, _idents]) => element)
       .filter((element) => element.type === "extends_clause");
     for (const extendsClause of extendsClauses) {
-      const superclassType = TreeSitterUtil.getDeclaredType(extendsClause);
+      const superclassType = TreeSitterUtil.getTypeSpecifier(extendsClause);
       const unresolvedSuperclass = superclassType.isGlobal
         ? new UnresolvedAbsoluteReference(superclassType.symbols, "class")
         : new UnresolvedRelativeReference(document, extendsClause, superclassType.symbols, "class");
@@ -296,7 +299,12 @@ function findDeclarationInClass(
       }
 
       logger.debug(`Checking superclass ${superclass}`);
-      const decl = findDeclarationInClass(superclass.document, superclass.node, symbols, "class");
+      const decl = findDeclarationInClass(
+        superclass.document,
+        superclass.node,
+        symbols,
+        "variable",
+      );
       if (decl) {
         logger.debug(`Declaration ${decl} found in superclass ${superclass}`);
         return decl;
@@ -332,7 +340,7 @@ function resolveImportClause(
   importClause: Parser.SyntaxNode,
 ): ResolveImportClauseResult {
   // imports are always relative according to the grammar
-  const importPath = TreeSitterUtil.getDeclaredType(
+  const importPath = TreeSitterUtil.getTypeSpecifier(
     importClause.childForFieldName("name")!,
   ).symbols;
 
@@ -397,7 +405,7 @@ function resolveAbsoluteReference(
     throw new Error(`Reference is not an UnresolvedAbsoluteReference: ${reference}`);
   }
 
-  logger.debug(`Resolving absolute reference ${reference}`);
+  logger.debug(`Resolving ${reference}`);
 
   const library = project.libraries.find((lib) => lib.name === reference.symbols[0]);
   if (library == null) {
@@ -405,17 +413,12 @@ function resolveAbsoluteReference(
     return null;
   }
 
-  logger.debug(`Found library ${library.name}; performing resolution: `);
-
   let alreadyResolved: ResolvedReference | null = null;
   for (let i = 0; i < reference.symbols.length; i++) {
-    alreadyResolved = resolveNext(library, reference, alreadyResolved);
-    // logger.debug(`resolveNext found symbol: ${alreadyResolved != null}`);
+    alreadyResolved = resolveNext(library, reference.symbols[i], alreadyResolved);
     if (alreadyResolved == null) {
       return null;
     }
-
-    logger.debug(`Step ${i + 1}: ${alreadyResolved}`);
 
     // If we're not done with the reference chain, we need to make sure that we know
     // the type of the variable in order to check its child variables
@@ -429,12 +432,11 @@ function resolveAbsoluteReference(
         return null;
       }
 
-      logger.debug(`  => class: ${classRef}`);
       alreadyResolved = classRef;
     }
   }
 
-  logger.debug(`Resolved symbol ${alreadyResolved?.symbols} in ${alreadyResolved?.document.path}`);
+  logger.debug(`Resolved symbol ${alreadyResolved}`);
 
   return alreadyResolved;
 }
@@ -442,47 +444,37 @@ function resolveAbsoluteReference(
 /**
  * Performs a single iteration of the resolution algorithm.
  *
- * @param reference the entire reference
- * @param alreadyResolved a resolved reference (to a class)
+ * @param nextSymbol the next symbol to resolve
+ * @param parentReference a resolved reference (to a class)
  * @returns the next resolved reference
  */
 function resolveNext(
   library: ModelicaLibrary,
-  reference: UnresolvedAbsoluteReference,
-  alreadyResolved: ResolvedReference | null,
+  nextSymbol: string,
+  parentReference: ResolvedReference | null,
 ): ResolvedReference | null {
   // If at the root level, find the root package
-  if (!alreadyResolved) {
-    logger.debug(`Resolve next: ${reference.symbols[0]}`);
+  if (!parentReference) {
     const documentPath = path.join(library.path, "package.mo");
     const [document, packageClass] = getPackageClassFromFilePath(
       library,
       documentPath,
-      reference.symbols[0],
+      nextSymbol,
     );
     if (!document || !packageClass) {
-      logger.debug(`Couldn't find package class: ${reference.symbols[0]} in ${documentPath}`);
+      logger.debug(`Couldn't find package class: ${nextSymbol} in ${documentPath}`);
       return null;
     }
 
-    return new ResolvedReference(document, packageClass, reference.symbols.slice(0, 1), "class");
+    return new ResolvedReference(document, packageClass, [nextSymbol], "class");
   }
 
-  const nextSymbolIndex = alreadyResolved.symbols.length;
-  const nextSymbol = reference.symbols[nextSymbolIndex];
-  // logger.debug(
-  //   `Resolve next: ${nextSymbol} (alreadyResolved: ${
-  //     alreadyResolved.node.type
-  //   } with ident ${TreeSitterUtil.getIdentifier(alreadyResolved.node)})`,
-  // );
-
-  // If there is a document for nextSymbol blablabla
-  const dirName = path.dirname(alreadyResolved.document.path);
+  const dirName = path.dirname(parentReference.document.path);
   const potentialPaths = [
     path.join(dirName, `${nextSymbol}.mo`),
     path.join(dirName, `${nextSymbol}/package.mo`),
   ];
-  //logger.debug(`resolveNext potentialPaths: ${potentialPaths}`);
+
   for (const documentPath of potentialPaths) {
     if (!fs.existsSync(documentPath)) {
       continue;
@@ -497,30 +489,35 @@ function resolveNext(
     return new ResolvedReference(
       document,
       packageClass,
-      reference.symbols.slice(0, nextSymbolIndex + 1),
+      [...parentReference.symbols, nextSymbol],
       "class",
     );
   }
 
-  // If nextSymbol is in alreadyResolved.node:
-  //    return the declaration
-  // TODO: Variable declarations may be nested inside an element list
+  // TODO: The `kind` parameter here should be `undefined` unless
+  //       `resolveReference` was called with kind = "class" by
+  //       the superclass handling section in findDeclarationInClass.
+  //       ...or something like that
+  // As it is now, we don't know if `child` is a class or variable. We can't use
+  // `undefined` to indicate this because this results in infinite recursion. 
+  // This issue causes us to be unable to look up variables declared in a superclass 
+  // of a member variable. A redesign might be necessary to resolve this.
   const child = findDeclarationInClass(
-    alreadyResolved.document,
-    alreadyResolved.node,
-    reference.symbols.slice(nextSymbolIndex),
-    alreadyResolved.kind,
+    parentReference.document,
+    parentReference.node,
+    [nextSymbol],
+    parentReference.kind,
   );
   if (child) {
     return new ResolvedReference(
       child.document,
       child.node,
-      reference.symbols.slice(0, nextSymbolIndex + 1),
+      [...parentReference.symbols, nextSymbol],
       child.kind,
     );
   }
 
-  logger.debug(`Couldn't find document for ${nextSymbol}`);
+  logger.debug(`Couldn't find: .${parentReference.symbols.join(".")}.${nextSymbol}`);
 
   return null;
 }
@@ -557,7 +554,7 @@ function getPackageClassFromFilePath(
  * @returns a reference to the class definition, or `null` if the type is not a class (e.g. a builtin like `Real`)
  */
 function variableRefToClassRef(varRef: ResolvedReference): ResolvedReference | null {
-  const type = TreeSitterUtil.getDeclaredType(varRef.node);
+  const type = TreeSitterUtil.getTypeSpecifier(varRef.node);
 
   const typeRef = type.isGlobal
     ? new UnresolvedAbsoluteReference(type.symbols, "class")

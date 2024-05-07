@@ -266,7 +266,6 @@ export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
       return getDeclaredIdentifiers(definition);
     }
     default:
-      logger.warn(`getDeclaredIdentifiers: unknown node type ${node.type}`);
       return [];
   }
 }
@@ -285,7 +284,7 @@ export interface TypeSpecifier {
   symbolNodes: SyntaxNode[];
 }
 
-export function getDeclaredType(node: SyntaxNode): TypeSpecifier {
+export function getTypeSpecifier(node: SyntaxNode): TypeSpecifier {
   switch (node.type) {
     case "type_specifier": {
       const isGlobal = node.childForFieldName("global") !== null;
@@ -314,15 +313,51 @@ export function getDeclaredType(node: SyntaxNode): TypeSpecifier {
     default: {
       const typeSpecifier = findFirst(node, (child) => child.type === "type_specifier");
       if (typeSpecifier) {
-        return getDeclaredType(typeSpecifier);
+        return getTypeSpecifier(typeSpecifier);
       }
 
       const name = findFirst(node, (child) => child.type === "name");
       if (name) {
-        return getDeclaredType(name);
+        return getTypeSpecifier(name);
       }
 
       throw new Error("Syntax node does not contain a type_specifier or name");
+    }
+  }
+}
+
+// TODO: this does not handle indexing arrays
+export interface ComponentReference {
+  isGlobal: boolean;
+  components: string[];
+  componentNodes: SyntaxNode[];
+}
+
+export function getComponentReference(node: SyntaxNode): ComponentReference {
+  switch (node.type) {
+    case "component_reference": {
+      const isGlobal = node.childForFieldName("global") !== null;
+      const componentNodes = getNameIdentifiers(node);
+
+      return {
+        isGlobal,
+        components: componentNodes.map((id) => id.text),
+        componentNodes,
+      };
+    }
+    case "IDENT":
+      return {
+        isGlobal: false,
+        components: [node.text],
+        componentNodes: [node],
+      };
+    default: {
+      const componentRef = findFirst(node, (child) => child.type === "component_reference");
+      if (componentRef) {
+        return getComponentReference(componentRef);
+      }
+
+      throw new Error("Syntax node does not contain a component_reference");
     }
   }
 }
@@ -331,8 +366,10 @@ export function getDeclaredType(node: SyntaxNode): TypeSpecifier {
  * Converts a name `SyntaxNode` into an array of the `IDENT`s in that node.
  */
 function getNameIdentifiers(nameNode: SyntaxNode): Parser.SyntaxNode[] {
-  if (nameNode.type !== "name") {
-    throw new Error(`Expected a 'name' node; got '${nameNode.type}' (${nameNode.text})`);
+  if (nameNode.type !== "name" && nameNode.type !== "component_reference") {
+    throw new Error(
+      `Expected a 'name' or 'component_reference' node; got '${nameNode.type}' (${nameNode.text})`,
+    );
   }
 
   const identNode = nameNode.childForFieldName("identifier")!;

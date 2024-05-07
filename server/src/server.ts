@@ -41,16 +41,12 @@
 
 import * as LSP from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import findCacheDirectory from "find-cache-dir";
-import * as fsWalk from "@nodelib/fs.walk";
 import * as fs from "node:fs/promises";
-import * as util from "node:util";
-import * as url from "node:url";
 
 import { initializeParser } from "./parser";
 import Analyzer from "./analyzer";
+import { uriToPath } from "./util";
 import { logger, setLogConnection, setLogLevel } from "./util/logger";
-import { uriToPath } from './util';
 
 /**
  * ModelicaServer collection all the important bits and bobs.
@@ -226,19 +222,15 @@ export class ModelicaServer {
   //
   //    What does this even mean? Is this a definition of Foo or a redeclaration of Foo?
   //
-  // 3. Import aliases. Should this be considered to be a declaration of `Frobnicator`?  
+  // 3. Import aliases. Should this be considered to be a declaration of `Frobnicator`?
   //
-  //        import Frobnicator = Foo.Bar.Baz; 
+  //        import Frobnicator = Foo.Bar.Baz;
   //
 
   private async onDeclaration(params: LSP.DeclarationParams): Promise<LSP.LocationLink[]> {
     logger.debug("onDeclaration");
 
-    const locationLink = await this.analyzer.findDeclarationFromPosition(
-      params.textDocument.uri,
-      params.position.line,
-      params.position.character,
-    );
+    const locationLink = this.analyzer.findDeclaration(params.textDocument.uri, params.position);
     if (locationLink == null) {
       return [];
     }
@@ -249,11 +241,7 @@ export class ModelicaServer {
   private async onDefinition(params: LSP.DefinitionParams): Promise<LSP.LocationLink[]> {
     logger.debug("onDefinition");
 
-    const locationLink = await this.analyzer.findDeclarationFromPosition(
-      params.textDocument.uri,
-      params.position.line,
-      params.position.character,
-    );
+    const locationLink = this.analyzer.findDeclaration(params.textDocument.uri, params.position);
     if (locationLink == null) {
       return [];
     }

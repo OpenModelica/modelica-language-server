@@ -44,16 +44,18 @@ import Parser from "web-tree-sitter";
 import * as fs from "node:fs/promises";
 import * as fsSync from "node:fs";
 import * as path from "node:path";
-import * as url from "node:url";
 
-import { UnresolvedRelativeReference } from "./analysis/reference";
+import {
+  UnresolvedAbsoluteReference,
+  UnresolvedReference,
+  UnresolvedRelativeReference,
+} from "./analysis/reference";
 import resolveReference from "./analysis/resolveReference";
-import { ModelicaProject } from "./project/project";
-import { ModelicaLibrary } from "./project/library";
+import { ModelicaDocument, ModelicaLibrary, ModelicaProject } from "./project";
 import { uriToPath } from "./util";
+import * as TreeSitterUtil from "./util/tree-sitter";
 import { getAllDeclarationsInTree } from "./util/declarations";
 import logger from "./util/logger";
-import * as TreeSitterUtil from "./util/tree-sitter";
 
 export default class Analyzer {
   #project: ModelicaProject;
@@ -114,13 +116,16 @@ export default class Analyzer {
     return getAllDeclarationsInTree(tree, uri);
   }
 
-  public async findDeclarationFromPosition(
+  public findDeclaration(
     uri: LSP.DocumentUri,
-    line: number,
-    character: number,
-  ): Promise<LSP.LocationLink | null> {
+    position: LSP.Position,
+  ): LSP.LocationLink | null {
     const path = uriToPath(uri);
-    logger.debug(`Searching for declaration of symbol at ${line + 1}:${character + 1} in '${path}'`);
+    logger.debug(
+      `Searching for declaration of symbol at ${position.line + 1}:${
+        position.character + 1
+      } in '${path}'`,
+    );
 
     const document = this.#project.getDocument(path);
     if (!document) {
@@ -133,67 +138,120 @@ export default class Analyzer {
       return null;
     }
 
-    const documentOffset = document.offsetAt({ line, character });
-
-    // TODO: we should check for a `type_specifier` first, then a `name`, then an `ident`
-    const hoveredName = this.findNodeAtPosition(
-      document.tree.rootNode,
-      documentOffset,
-      (node) => node.type === "name",
-    );
-
-    let symbols: string[] | undefined;
-    let startNode: Parser.SyntaxNode | undefined;
-    if (hoveredName) {
-      symbols = TreeSitterUtil.getDeclaredType(hoveredName).symbolNodes
-        .filter(
-          (node) =>
-            node.startPosition.row < line ||
-            (node.startPosition.row === line && node.startPosition.column <= character),
-        )
-        .map((node) => node.text);
-
-      startNode = this.findNodeAtPosition(
-        hoveredName,
-        documentOffset,
-        (node) => node.type === "IDENT",
-      );
-    } else {
-      startNode = this.findNodeAtPosition(
-        document.tree.rootNode,
-        documentOffset,
-        (node) => node.type === "IDENT",
-      );
-      symbols = startNode ? [startNode.text] : undefined;
-    }
-
-    if (!startNode || !symbols) {
+    const reference = this.getReferenceAt(document, position);
+    if (!reference) {
       logger.info(`Tried to find declaration in '${path}', but not hovering on any identifiers`);
       return null;
     }
 
     logger.debug(
-      `Searching for declaration '${symbols.join(".")}' at ${line + 1}:${character + 1} in '${path}'`,
+      `Searching for '${reference}' at ${position.line + 1}:${position.character + 1} in '${path}'`,
     );
 
     try {
-      const result = resolveReference(
-        document.project,
-        new UnresolvedRelativeReference(document, startNode, symbols),
-        "declaration",
-      );
+      const result = resolveReference(document.project, reference, "declaration");
       if (!result) {
-        logger.debug(`Didn't find declaration of ${symbols.join(".")}`);
+        logger.debug(`Didn't find declaration of ${reference.symbols.join(".")}`);
         return null;
       }
 
       const link = TreeSitterUtil.createLocationLink(result.document, result.node);
-      logger.debug(`Found declaration of ${symbols.join(".")}: `, link);
+      logger.debug(`Found declaration of ${reference.symbols.join(".")}: `, link);
       return link;
-    } catch (ex) {
-      logger.debug("Caught exception: " + JSON.stringify((ex as Error).stack));
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        logger.debug("Caught exception: ", e.stack);
+      } else {
+        logger.debug(`Caught:`, e);
+      }
       return null;
     }
+  }
+
+  /**
+   * Returns the reference at the document position, or `null` if no reference exists.
+   */
+  private getReferenceAt(
+    document: ModelicaDocument,
+    position: LSP.Position,
+  ): UnresolvedReference | null {
+    function checkBeforeCursor(node: Parser.SyntaxNode): boolean {
+      if (node.startPosition.row < position.line) {
+        return true;
+      }
+      return (
+        node.startPosition.row === position.line && node.startPosition.column <= position.character
+      );
+    }
+
+    const documentOffset = document.offsetAt(position);
+
+    // First, check if this is a `type_specifier` or a `name`.
+    let hoveredType = this.findNodeAtPosition(
+      document.tree.rootNode,
+      documentOffset,
+      (node) => node.type === "name",
+    );
+
+    if (hoveredType) {
+      if (hoveredType.parent?.type === "type_specifier") {
+        hoveredType = hoveredType.parent;
+      }
+
+      const declaredType = TreeSitterUtil.getTypeSpecifier(hoveredType);
+      const symbols = declaredType.symbolNodes.filter(checkBeforeCursor).map((node) => node.text);
+
+      if (declaredType.isGlobal) {
+        return new UnresolvedAbsoluteReference(symbols, "class");
+      } else {
+        const startNode = this.findNodeAtPosition(
+          hoveredType,
+          documentOffset,
+          (node) => node.type === "IDENT",
+        )!;
+
+        return new UnresolvedRelativeReference(document, startNode, symbols, "class");
+      }
+    }
+
+    // Next, check if this is a `component_reference`.
+    const hoveredComponentReference = this.findNodeAtPosition(
+      document.tree.rootNode,
+      documentOffset,
+      (node) => node.type === "component_reference",
+    );
+    if (hoveredComponentReference) {
+      // TODO: handle array indices
+      const componentReference = TreeSitterUtil.getComponentReference(hoveredComponentReference);
+      const symbols = componentReference.componentNodes
+        .filter(checkBeforeCursor)
+        .map((node) => node.text);
+
+      if (componentReference.isGlobal) {
+        return new UnresolvedAbsoluteReference(symbols, "variable");
+      } else {
+        const startNode = this.findNodeAtPosition(
+          hoveredComponentReference,
+          documentOffset,
+          (node) => node.type === "IDENT",
+        )!;
+
+        return new UnresolvedRelativeReference(document, startNode, symbols, "variable");
+      }
+    }
+
+    // Finally, give up and check if this is just an ident.
+    const startNode = this.findNodeAtPosition(
+      document.tree.rootNode,
+      documentOffset,
+      (node) => node.type === "IDENT",
+    );
+    if (startNode) {
+      return new UnresolvedRelativeReference(document, startNode, [startNode.text]);
+    }
+
+    // We're not hovering over an identifier.
+    return null;
   }
 
   /**
