@@ -103,7 +103,7 @@ export class ModelicaServer {
       hoverProvider: false,
       signatureHelpProvider: undefined,
       semanticTokensProvider: undefined,
-      textDocumentSync: LSP.TextDocumentSyncKind.Full,
+      textDocumentSync: LSP.TextDocumentSyncKind.Incremental,
       workspace: {
         workspaceFolders: {
           supported: true,
@@ -155,7 +155,8 @@ export class ModelicaServer {
   private async onDidChangeTextDocument(params: LSP.DidChangeTextDocumentParams): Promise<void> {
       logger.debug("onDidChangeTextDocument");
       for (const change of params.contentChanges) {
-        this.analyzer.updateDocument(params.textDocument.uri, change.text);
+        const range = "range" in change ? change.range : undefined;
+        this.analyzer.updateDocument(params.textDocument.uri, change.text, range);
       }
   }
 

@@ -101,7 +101,7 @@ export class ModelicaDocument implements TextDocument {
     });
 
     this.#tree = this.project.parser.parse((index: number, position?: Parser.Point) => {
-      if (position !== undefined) {
+      if (position) {
         return this.getText({
           start: {
             character: position.column,
