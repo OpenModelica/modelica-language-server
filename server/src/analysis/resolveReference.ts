@@ -499,8 +499,8 @@ function resolveNext(
   //       the superclass handling section in findDeclarationInClass.
   //       ...or something like that
   // As it is now, we don't know if `child` is a class or variable. We can't use
-  // `undefined` to indicate this because this results in infinite recursion. 
-  // This issue causes us to be unable to look up variables declared in a superclass 
+  // `undefined` to indicate this because this results in infinite recursion.
+  // This issue causes us to be unable to look up variables declared in a superclass
   // of a member variable. A redesign might be necessary to resolve this.
   const child = findDeclarationInClass(
     parentReference.document,
