@@ -64,6 +64,13 @@ export default class Analyzer {
     this.#project = new ModelicaProject(parser);
   }
 
+  /**
+   * Adds a library (and all of its documents) to the analyzer.
+   *
+   * @param uri uri to the library root
+   * @param isWorkspace `true` if this is a user workspace/project, `false` if
+   *     this is a library.
+   */
   public async loadLibrary(uri: LSP.URI, isWorkspace: boolean): Promise<void> {
     const isLibrary = (folderPath: string) =>
       fsSync.existsSync(path.join(folderPath, "package.mo"));
@@ -88,24 +95,51 @@ export default class Analyzer {
     }
   }
 
+  /**
+   * Adds a document to the analyzer.
+   *
+   * Note: {@link loadLibrary} already adds all discovered documents to the
+   * analyzer. It is only necessary to call this method on file creation.
+   *
+   * @param uri uri to document to add
+   * @throws if the document does not belong to a library
+   */
   public addDocument(uri: LSP.DocumentUri): void {
     this.#project.addDocument(uriToPath(uri));
   }
 
+  /**
+   * Submits a modification to a document. Ignores documents that have not been
+   * added with {@link addDocument} or {@link loadLibrary}.
+   *
+   * @param uri uri to document to update
+   * @param text the modification
+   * @param range range to update, or `undefined` to replace the whole file
+   */
   public updateDocument(uri: LSP.DocumentUri, text: string, range?: LSP.Range): void {
     this.#project.updateDocument(uriToPath(uri), text, range);
   }
 
+  /**
+   * Removes a document from the analyzer. Ignores documents that have not been
+   * added or have already been removed.
+   *
+   * @param uri uri to document to remove
+   */
   public removeDocument(uri: LSP.DocumentUri): void {
     this.#project.removeDocument(uriToPath(uri));
   }
 
   /**
-   * Get all symbol declarations in the given file. This is used for generating an outline.
-   *
-   * TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found in a given text document.
+   * Gets all symbol declarations in the given file. This is used for generating
+   * an outline.
+   * 
+   * @param uri uri to document
+   * @returns the symbols
    */
   public getDeclarationsForUri(uri: LSP.DocumentUri): LSP.SymbolInformation[] {
+    // TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found
+    // in a given text document.
     const path = uriToPath(uri);
     const tree = this.#project.getDocument(path)?.tree;
 
@@ -116,6 +150,14 @@ export default class Analyzer {
     return getAllDeclarationsInTree(tree, uri);
   }
 
+  /**
+   * Finds the position of the declaration of the symbol at the given position.
+   *
+   * @param uri the opened document
+   * @param position the cursor position
+   * @returns a {@link LSP.LocationLink} to the symbol's declaration, or `null`
+   *     if not found.
+   */
   public findDeclaration(
     uri: LSP.DocumentUri,
     position: LSP.Position,
@@ -169,7 +211,8 @@ export default class Analyzer {
   }
 
   /**
-   * Returns the reference at the document position, or `null` if no reference exists.
+   * Returns the reference at the document position, or `null` if no reference
+   * exists.
    */
   private getReferenceAt(
     document: ModelicaDocument,
@@ -264,7 +307,7 @@ export default class Analyzer {
    *
    * @param rootNode node to start searching from. parents/siblings of this node will be ignored
    * @param offset the offset of the symbol from the start of the document
-   * @param condition the condition to check if a node is good
+   * @param condition the condition to check if a node is "good"
    * @returns the node at the position, or `undefined` if none was found
    */
   private findNodeAtPosition(

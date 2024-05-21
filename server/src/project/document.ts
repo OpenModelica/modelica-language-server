@@ -57,6 +57,13 @@ export class ModelicaDocument implements TextDocument {
     this.#tree = tree;
   }
 
+  /**
+   * Loads a document.
+   *
+   * @param library the containing {@link ModelicaLibrary}
+   * @param documentPath the path to the document
+   * @returns the document
+   */
   public static async load(
     library: ModelicaLibrary,
     documentPath: string,
@@ -75,6 +82,12 @@ export class ModelicaDocument implements TextDocument {
     );
   }
 
+  /**
+   * Incrementally updates a document.
+   *
+   * @param text the modification
+   * @param range the range to update, or `undefined` to replace the whole file
+   */
   public async update(text: string, range?: LSP.Range): Promise<void> {
     if (range === undefined) {
       TextDocument.update(this.#document, [{ text }], this.version + 1);
@@ -153,6 +166,11 @@ export class ModelicaDocument implements TextDocument {
     return this.#document.lineCount;
   }
 
+  /**
+   * The fully-qualified name of the class declared by this file. For instance,
+   * for a file named `MyLibrary/MyPackage/MyClass.mo`, this would be
+   * `["MyLibrary", "MyPackage", "MyClass"]`. 
+   */
   public get packagePath(): string[] {
     const directories = path.relative(this.#library.path, this.path).split(path.sep);
     const fileName = directories.pop()!;
@@ -165,6 +183,15 @@ export class ModelicaDocument implements TextDocument {
     return packagePath;
   }
 
+  /**
+   * The enclosing package of the class declared by this file. For instance, for
+   * a file named `MyLibrary/MyPackage/MyClass.mo`, this would be `["MyLibrary",
+   * "MyPackage"]`.
+   *
+   * Note: this property should be the same thing as the `within` clause
+   * declared in the document. However, we don't actually check the clause at
+   * all. The `within` clause is entirely redundant and completely ignored.
+   */
   public get within(): string[] {
     return this.packagePath.slice(0, -1);
   }

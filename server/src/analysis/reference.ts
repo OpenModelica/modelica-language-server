@@ -81,8 +81,14 @@ export class UnresolvedAbsoluteReference extends BaseUnresolvedReference {
   }
 }
 
+/**
+ * A possibly-valid reference to a symbol that must be resolved before use.
+ */
 export type UnresolvedReference = UnresolvedRelativeReference | UnresolvedAbsoluteReference;
 
+/**
+ * A valid, absolute reference to a symbol.
+ */
 export class ResolvedReference {
   /**
    * The document that contains the `node`.

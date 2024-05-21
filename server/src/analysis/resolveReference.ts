@@ -103,15 +103,17 @@ function* getAbsoluteReferenceCandidates(
 }
 
 /**
- * Locates the declaration/definition of a reference in its document, or finds a suitable absolute reference.
+ * Attempts to locate the definition of an `UnresolvedRelativeReference` within
+ * the referenced document.
  *
- * @param reference a reference to a local in which the `document` and `node` properties reference
- *     the usage of the symbol.
- * @returns either
- *     (1) a relative reference in which the `document` and `node` properties reference
- *         the symbol's declaration/definition,
- *     (2) an absolute reference
- *     (3) `undefined` (not in the document)
+ * If the reference is present in the document, an `UnresolvedRelativeReference`
+ * pointing to the definition will be returned. If the reference may refer to an
+ * import, an `UnresolvedAbsoluteReference` will be returned. If the reference
+ * was not present at all, `undefined` will be returned.
+ *
+ * @param reference a reference to a local in which the `document` and `node`
+ *     properties reference the usage of the symbol.
+ * @returns the reference candidates
  */
 function* findReferenceInDocument(
   reference: UnresolvedRelativeReference,
@@ -120,7 +122,6 @@ function* findReferenceInDocument(
   const maybeVariable = reference.kind === "variable" || reference.kind === undefined;
 
   if (maybeClass) {
-    // logger.debug("findReferenceInDocument: Checking if this node is a class...");
     if (
       TreeSitterUtil.isDefinition(reference.node) &&
       TreeSitterUtil.hasIdentifier(reference.node, reference.symbols[0])
@@ -134,7 +135,6 @@ function* findReferenceInDocument(
       return;
     }
 
-    // logger.debug("findReferenceInDocument: Checking for child class...");
     const classDecl = reference.node.children.find(
       (child) =>
         TreeSitterUtil.isDefinition(child) &&
@@ -153,7 +153,6 @@ function* findReferenceInDocument(
   }
 
   if (maybeVariable) {
-    // logger.debug("findReferenceInDocument: Checking for child variable...");
     const varDecl = reference.node.children.find(
       (child) =>
         TreeSitterUtil.isVariableDeclaration(child) &&
@@ -171,7 +170,6 @@ function* findReferenceInDocument(
     }
   }
 
-  // logger.debug("findReferenceInDocument: Checking for declarations in class...");
   const declInClass = findDeclarationInClass(
     reference.document,
     reference.node,
@@ -187,11 +185,9 @@ function* findReferenceInDocument(
     (child) => child.type === "import_clause",
   );
   if (importClauses && importClauses.length > 0) {
-    // logger.debug("findReferenceInDocument: Checking imports...");
     for (const importClause of importClauses) {
       const { importCandidate, wildcard } = resolveImportClause(reference.symbols, importClause);
       if (importCandidate) {
-        // logger.debug("findReferenceInDocument: found import!");
 
         if (wildcard) {
           yield importCandidate;
@@ -204,7 +200,6 @@ function* findReferenceInDocument(
   }
 
   if (reference.node.parent) {
-    // logger.debug("findReferenceInDocument: Checking parent node...");
     yield* findReferenceInDocument(
       new UnresolvedRelativeReference(
         reference.document,
@@ -221,6 +216,15 @@ function* findReferenceInDocument(
   return;
 }
 
+/**
+ * Searches for a declaration within a class (or a superclass).
+ *
+ * @param document the class' document
+ * @param classNode the `class_definition` syntax node referencing the class 
+ * @param symbols the symbol to search for
+ * @param referenceKind the type of reference
+ * @returns an unresolved reference to the symbol, or `undefined` if not present 
+ */
 function findDeclarationInClass(
   document: ModelicaDocument,
   classNode: Parser.SyntaxNode,
@@ -230,11 +234,6 @@ function findDeclarationInClass(
   if (classNode.type !== "class_definition") {
     return undefined;
   }
-
-  // logger.debug(
-  //   `findDeclarationInClass: Checking for declaration ${symbols.join(".")} ` +
-  //     `in class: ${TreeSitterUtil.getDeclaredIdentifiers(classNode)}`,
-  // );
 
   const elements = classNode
     .childForFieldName("classSpecifier")
@@ -260,7 +259,7 @@ function findDeclarationInClass(
         classDef,
         symbols,
         "class",
-      ) as UnresolvedRelativeReference & { kind: ReferenceKind };
+      ) as UnresolvedRelativeReference & { kind: "class" };
     }
 
     const componentDef = namedElement[0].childForFieldName("componentClause")!;
@@ -271,7 +270,7 @@ function findDeclarationInClass(
       componentDef,
       symbols,
       "variable",
-    ) as UnresolvedRelativeReference & { kind: ReferenceKind };
+    ) as UnresolvedRelativeReference & { kind: "variable" };
   }
 
   // only check superclasses if we know we're not looking for a class
@@ -321,8 +320,8 @@ interface ResolveImportClauseResult {
    */
   importCandidate?: UnresolvedAbsoluteReference;
   /**
-   * `true` if this was a wildcard import, and we are not sure if this import even exists.
-   * `false` if this was not a wildcard import.
+   * `true` if this was a wildcard import, and we are not sure if this import
+   * even exists. `false` if this was not a wildcard import.
    */
   wildcard: boolean;
 }
@@ -420,8 +419,8 @@ function resolveAbsoluteReference(
       return null;
     }
 
-    // If we're not done with the reference chain, we need to make sure that we know
-    // the type of the variable in order to check its child variables
+    // If we're not done with the reference chain, we need to make sure that we
+    // know the type of the variable in order to check its child variables
     if (
       i < reference.symbols.length - 1 &&
       TreeSitterUtil.isVariableDeclaration(alreadyResolved.node)
@@ -495,13 +494,14 @@ function resolveNext(
   }
 
   // TODO: The `kind` parameter here should be `undefined` unless
-  //       `resolveReference` was called with kind = "class" by
-  //       the superclass handling section in findDeclarationInClass.
-  //       ...or something like that
+  //       `resolveReference` was called with kind = "class" by the superclass
+  //       handling section in findDeclarationInClass. ...or something like that
   // As it is now, we don't know if `child` is a class or variable. We can't use
   // `undefined` to indicate this because this results in infinite recursion.
-  // This issue causes us to be unable to look up variables declared in a superclass
-  // of a member variable. A redesign might be necessary to resolve this.
+  // This issue causes us to be unable to look up variables declared in a
+  // superclass of a member variable. A redesign might be necessary to resolve
+  // this. Perhaps if we could keep track of which classes we already visited,
+  // we wouldn't need the whole "class"/"variable" trick at all! 
   const child = findDeclarationInClass(
     parentReference.document,
     parentReference.node,
@@ -548,10 +548,12 @@ function getPackageClassFromFilePath(
 }
 
 /**
- * Finds the type of a variable declaration and returns a reference to that type.
+ * Finds the type of a variable declaration and returns a reference to that
+ * type.
  *
  * @param varRef a reference to a variable declaration/definition
- * @returns a reference to the class definition, or `null` if the type is not a class (e.g. a builtin like `Real`)
+ * @returns a reference to the class definition, or `null` if the type is not a
+ *     class (e.g. a builtin like `Real`)
  */
 function variableRefToClassRef(varRef: ResolvedReference): ResolvedReference | null {
   const type = TreeSitterUtil.getTypeSpecifier(varRef.node);

@@ -55,6 +55,14 @@ export class ModelicaLibrary {
     this.#isWorkspace = isWorkspace;
   }
 
+  /**
+   * Loads a library and all of its {@link ModelicaDocument}s.
+   *
+   * @param project the containing project
+   * @param libraryPath the path to the library
+   * @param isWorkspace `true` if this is a user workspace
+   * @returns the loaded library
+   */
   public static async load(
     project: ModelicaProject,
     libraryPath: string,

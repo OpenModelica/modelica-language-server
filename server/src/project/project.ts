@@ -80,7 +80,11 @@ export class ModelicaProject {
   }
 
   /**
-   * Adds a new document to the LSP.
+   * Adds a new document to the LSP. Calling this method multiple times for the
+   * same document has no effect.
+   *
+   * @param documentPath path to the document
+   * @throws if the document does not belong to a library
    */
   public async addDocument(documentPath: string): Promise<void> {
     logger.info(`Adding document at '${documentPath}'...`);
@@ -91,6 +95,11 @@ export class ModelicaProject {
 
       // Assume that files can't be inside multiple libraries at the same time
       if (isSubdirectory) {
+        if (library.documents.get(documentPath) !== undefined) {
+          logger.warn(`Document '${documentPath}' already in library '${library.name}'; ignoring...`);
+          return;
+        }
+
         const document = await ModelicaDocument.load(library, documentPath);
         library.documents.set(documentPath, document);
         logger.debug(`Added document: ${documentPath}`);
@@ -102,10 +111,11 @@ export class ModelicaProject {
   }
 
   /**
-   * Updates the content and tree of the given document.
+   * Incrementally updates the content and tree of the given document. Ignores
+   * documents that have not been loaded.
    *
    * @param text the modification
-   * @param range range to update, or undefined to replace the whole file
+   * @param range range to update, or `undefined` to replace the whole file
    */
   public updateDocument(documentPath: string, text: string, range?: LSP.Range): void {
     logger.debug(`Updating document at '${documentPath}'...`);
