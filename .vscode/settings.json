@@ -12,5 +12,7 @@
     "nodelib",
     "OSMC",
     "redeclaration"
-  ]
+  ],
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
 }
