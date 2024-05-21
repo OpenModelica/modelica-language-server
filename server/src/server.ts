@@ -41,6 +41,8 @@
 
 import * as LSP from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import url from 'node:url';
+import fs from 'node:fs/promises';
 
 import { initializeParser } from './parser';
 import Analyzer from './analyzer';
@@ -67,7 +69,7 @@ export class ModelicaServer {
 
   public static async initialize(
     connection: LSP.Connection,
-    { capabilities }: LSP.InitializeParams,
+    { capabilities, workspaceFolders }: LSP.InitializeParams,
   ): Promise<ModelicaServer> {
     // Initialize logger
     setLogConnection(connection);
@@ -76,11 +78,15 @@ export class ModelicaServer {
 
     const parser = await initializeParser();
     const analyzer = new Analyzer(parser);
-
-    const server = new ModelicaServer(analyzer, capabilities, connection);
+    if (workspaceFolders != null) {
+      for (const workspace of workspaceFolders) {
+        await analyzer.loadLibrary(workspace.uri, true);
+      }
+    }
+    // TODO: add libraries as well
 
     logger.debug('Initialized');
-    return server;
+    return new ModelicaServer(analyzer, capabilities, connection);
   }
 
   /**
@@ -88,52 +94,85 @@ export class ModelicaServer {
    */
   public capabilities(): LSP.ServerCapabilities {
     return {
-      textDocumentSync: LSP.TextDocumentSyncKind.Full,
       completionProvider: undefined,
       hoverProvider: false,
       signatureHelpProvider: undefined,
       documentSymbolProvider: true,
       colorProvider: false,
       semanticTokensProvider: undefined,
+      textDocumentSync: LSP.TextDocumentSyncKind.Full,
+      workspace: {
+        workspaceFolders: {
+          supported: true,
+          changeNotifications: true,
+        },
+      },
     };
   }
 
   public register(connection: LSP.Connection): void {
-    let currentDocument: TextDocument | null = null;
-    let initialized = false;
-
     // Make the text document manager listen on the connection
     // for open, change and close text document events
     this.#documents.listen(this.#connection);
 
+    connection.onInitialized(this.onInitialized.bind(this));
+    connection.onShutdown(this.onShutdown.bind(this));
+    connection.onDidChangeTextDocument(this.onDidChangeTextDocument.bind(this));
+    connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
-
-    connection.onInitialized(async () => {
-      initialized = true;
-      if (currentDocument) {
-        // If we already have a document, analyze it now that we're initialized
-        // and the linter is ready.
-        this.analyzeDocument(currentDocument);
-      }
-    });
-
-    // The content of a text document has changed. This event is emitted
-    // when the text document first opened or when its content has changed.
-    this.#documents.onDidChangeContent(({ document }) => {
-      logger.debug('onDidChangeContent');
-
-      // We need to define some timing to wait some time or until whitespace is typed
-      // to update the tree or we are doing this on every key stroke
-
-      currentDocument = document;
-      if (initialized) {
-        this.analyzeDocument(document);
-      }
-    });
   }
 
-  private async analyzeDocument(document: TextDocument) {
-    const diagnostics = this.#analyzer.analyze(document);
+  private async onInitialized(): Promise<void> {
+    logger.debug('onInitialized');
+    await connection.client.register(
+      new LSP.ProtocolNotificationType('workspace/didChangeWatchedFiles'),
+      {
+        watchers: [
+          {
+            globPattern: '**/*.{mo,mos}',
+          },
+        ],
+      },
+    );
+
+    // If we opened a project, analyze it now that we're initialized
+    // and the linter is ready.
+
+    // TODO: analysis
+  }
+
+  private async onShutdown(): Promise<void> {
+    logger.debug('onShutdown');
+  }
+
+  private async onDidChangeTextDocument(params: LSP.DidChangeTextDocumentParams): Promise<void> {
+    logger.debug('onDidChangeTextDocument');
+    for (const change of params.contentChanges) {
+      this.#analyzer.updateDocument(params.textDocument.uri, change.text);
+    }
+  }
+
+  private async onDidChangeWatchedFiles(params: LSP.DidChangeWatchedFilesParams): Promise<void> {
+    logger.debug('onDidChangeWatchedFiles: ' + JSON.stringify(params, undefined, 4));
+
+    for (const change of params.changes) {
+      switch (change.type) {
+        case LSP.FileChangeType.Created:
+          this.#analyzer.addDocument(change.uri);
+          break;
+        case LSP.FileChangeType.Changed: {
+          // TODO: incremental?
+          const path = url.fileURLToPath(change.uri);
+          const content = await fs.readFile(path, 'utf-8');
+          this.#analyzer.updateDocument(change.uri, content);
+          break;
+        }
+        case LSP.FileChangeType.Deleted: {
+          this.#analyzer.removeDocument(change.uri);
+          break;
+        }
+      }
+    }
   }
 
   /**
