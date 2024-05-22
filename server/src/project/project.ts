@@ -84,9 +84,10 @@ export class ModelicaProject {
    * same document has no effect.
    *
    * @param documentPath path to the document
+   * @returns `true` if the document was just added, `false` if it was already added
    * @throws if the document does not belong to a library
    */
-  public async addDocument(documentPath: string): Promise<void> {
+  public async addDocument(documentPath: string): Promise<boolean> {
     logger.info(`Adding document at '${documentPath}'...`);
 
     for (const library of this.#libraries) {
@@ -100,47 +101,56 @@ export class ModelicaProject {
 
       if (library.documents.get(documentPath) !== undefined) {
         logger.warn(`Document '${documentPath}' already in library '${library.name}'; ignoring...`);
-        return;
+        return false;
       }
 
       const document = await ModelicaDocument.load(library, documentPath);
       library.documents.set(documentPath, document);
       logger.debug(`Added document: ${documentPath}`);
-      return;
+      return true;
     }
 
     throw new Error(`Failed to add document '${documentPath}': not a part of any libraries.`);
   }
 
   /**
-   * Updates the content and tree of the given document.
+   * Updates the content and tree of the given document. Does nothing and
+   * returns `false` if the document was not loaded yet.
    *
+   * @param documentPath path to the document
    * @param text the modification
-   * @param range range to update, or undefined to replace the whole file
+   * @returns if the document was updated
    */
-  public updateDocument(documentPath: string, text: string): void {
+  public updateDocument(documentPath: string, text: string): boolean {
     logger.debug(`Updating document at '${documentPath}'...`);
 
     const doc = this.getDocument(documentPath);
     if (doc) {
       doc.update(text);
       logger.debug(`Updated document '${documentPath}'`);
+      return true;
     } else {
       logger.warn(`Failed to update document '${documentPath}': not loaded`);
+      return false;
     }
   }
 
   /**
    * Removes a document from the cache.
+   *
+   * @param documentPath path to the document
+   * @returns if the document was removed
    */
-  public removeDocument(documentPath: string): void {
+  public removeDocument(documentPath: string): boolean {
     logger.info(`Removing document at '${documentPath}'...`);
 
     const doc = this.getDocument(documentPath);
     if (doc) {
       doc.library.documents.delete(documentPath);
+      return true;
     } else {
       logger.warn(`Failed to remove document '${documentPath}': not loaded`);
+      return false;
     }
   }
 

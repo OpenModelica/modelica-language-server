@@ -33,23 +33,111 @@
  *
  */
 
-import * as Mocha from "mocha";
-import * as assert from "assert";
-import Parser from "web-tree-sitter";
-import { ModelicaProject, ModelicaLibrary } from "..";
+import Parser from 'web-tree-sitter';
+import { ModelicaProject, ModelicaLibrary } from '..';
+import assert from 'node:assert/strict';
+import path from 'node:path';
 
-describe("ModelicaProject", () => {
-  it("Library loading", async () => {
-    const parser = new Parser();
-    const project = new ModelicaProject(parser);
+const TEST_LIBRARY_PATH = path.normalize('./TestLibrary');
+const TEST_PACKAGE_PATH = path.resolve(TEST_LIBRARY_PATH, 'package.mo');
+const TEST_CLASS_PATH = path.resolve(TEST_LIBRARY_PATH, 'HalfAdder.mo');
 
-    assert.equal(project.libraries.length, 0);
+const TEST_PACKAGE_CONTENT = `within;
 
-    assert.throws(() => {
-      project.addDocument();
-    })
+package TestLibrary
+  annotation(version="1.0.0");
+end TestLibrary;
+`;
 
-    const library = new ModelicaLibrary(project, "/a/b/c", true);
-    project.addLibrary(library);
+describe('ModelicaProject', () => {
+  describe('an empty project', () => {
+    let project: ModelicaProject;
+
+    before(() => {
+      const parser = new Parser();
+      project = new ModelicaProject(parser);
+    });
+
+    it('should have no libraries', () => {
+      assert.equal(project.libraries.length, 0);
+    });
+
+    it('should not allow loading documents', () => {
+      assert.rejects(async () => {
+        await project.addDocument(TEST_CLASS_PATH);
+      });
+      assert.equal(project.getDocument(TEST_CLASS_PATH), undefined);
+    });
+
+    it('updating and deleting documents does nothing', () => {
+      assert(!project.updateDocument(TEST_CLASS_PATH, 'file content'));
+      assert(!project.removeDocument(TEST_CLASS_PATH));
+    });
+  });
+
+  describe('when adding a library', async () => {
+    let project: ModelicaProject;
+    let library: ModelicaLibrary;
+
+    beforeEach(async () => {
+      project = new ModelicaProject(new Parser());
+      library = await ModelicaLibrary.load(project, TEST_LIBRARY_PATH, false);
+      project.addLibrary(library);
+    });
+
+    it('should add the library', () => {
+      assert.equal(project.libraries.length, 1);
+      assert.equal(project.libraries[0], library);
+    });
+
+    it('should add all the documents in the library', async () => {
+      assert.notEqual(project.getDocument(TEST_PACKAGE_PATH), undefined);
+      assert.notEqual(project.getDocument(TEST_CLASS_PATH), undefined);
+
+      assert.equal(
+        library.documents.get(TEST_PACKAGE_PATH),
+        project.getDocument(TEST_PACKAGE_PATH),
+      );
+      assert.equal(
+        library.documents.get(TEST_CLASS_PATH),
+        project.getDocument(TEST_CLASS_PATH),
+      );
+
+    });
+
+    it('repeatedly adding documents has no effect', async () => {
+      for (let i = 0; i < 5; i++) {
+        assert(!project.addDocument(TEST_PACKAGE_PATH));
+        assert(!project.addDocument(TEST_CLASS_PATH));
+      }
+    });
+
+    it('documents can be updated', () => {
+      const document = project.getDocument(TEST_PACKAGE_PATH)!;
+      assert.equal(document.getText(), TEST_PACKAGE_CONTENT);
+
+      const newContent = `within;
+
+package TestLibrary
+  annotation(version="1.0.1");
+end TestLibrary;
+`;
+      assert(project.updateDocument(document.path, newContent));
+      assert.equal(document.getText(), newContent);
+    });
+
+    it('documents can be removed (and re-added)', () => {
+      assert.notEqual(project.getDocument(TEST_CLASS_PATH), undefined);
+
+      assert(project.removeDocument(TEST_CLASS_PATH));
+      assert.equal(project.getDocument(TEST_CLASS_PATH), undefined);
+
+      // no effect -- already removed
+      assert(!project.removeDocument(TEST_CLASS_PATH));
+
+      // can re-add document without issues
+      assert(project.addDocument(TEST_CLASS_PATH));
+      assert.notEqual(project.getDocument(TEST_CLASS_PATH), undefined);
+    });
   });
 });
