@@ -40,7 +40,7 @@
  */
 
 import * as LSP from 'vscode-languageserver/node';
-import { TextDocument} from 'vscode-languageserver-textdocument';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { initializeParser } from './parser';
 import Analyzer from './analyzer';
@@ -50,26 +50,25 @@ import { logger, setLogConnection, setLogLevel } from './util/logger';
  * ModelicaServer collection all the important bits and bobs.
  */
 export class ModelicaServer {
-  analyzer: Analyzer;
-  private clientCapabilities: LSP.ClientCapabilities;
-  private connection: LSP.Connection;
-  private documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(TextDocument);
+  #analyzer: Analyzer;
+  #clientCapabilities: LSP.ClientCapabilities;
+  #connection: LSP.Connection;
+  #documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(TextDocument);
 
   private constructor(
     analyzer: Analyzer,
     clientCapabilities: LSP.ClientCapabilities,
-    connection: LSP.Connection
+    connection: LSP.Connection,
   ) {
-    this.analyzer = analyzer;
-    this.clientCapabilities = clientCapabilities;
-    this.connection = connection;
+    this.#analyzer = analyzer;
+    this.#clientCapabilities = clientCapabilities;
+    this.#connection = connection;
   }
 
   public static async initialize(
     connection: LSP.Connection,
     { capabilities }: LSP.InitializeParams,
   ): Promise<ModelicaServer> {
-
     // Initialize logger
     setLogConnection(connection);
     setLogLevel('debug');
@@ -95,18 +94,17 @@ export class ModelicaServer {
       signatureHelpProvider: undefined,
       documentSymbolProvider: true,
       colorProvider: false,
-      semanticTokensProvider: undefined
+      semanticTokensProvider: undefined,
     };
   }
 
   public register(connection: LSP.Connection): void {
-
     let currentDocument: TextDocument | null = null;
     let initialized = false;
 
     // Make the text document manager listen on the connection
     // for open, change and close text document events
-    this.documents.listen(this.connection);
+    this.#documents.listen(this.#connection);
 
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
 
@@ -121,7 +119,7 @@ export class ModelicaServer {
 
     // The content of a text document has changed. This event is emitted
     // when the text document first opened or when its content has changed.
-    this.documents.onDidChangeContent(({ document }) => {
+    this.#documents.onDidChangeContent(({ document }) => {
       logger.debug('onDidChangeContent');
 
       // We need to define some timing to wait some time or until whitespace is typed
@@ -134,9 +132,8 @@ export class ModelicaServer {
     });
   }
 
-
   private async analyzeDocument(document: TextDocument) {
-    const diagnostics = this.analyzer.analyze(document);
+    const diagnostics = this.#analyzer.analyze(document);
   }
 
   /**
@@ -150,24 +147,21 @@ export class ModelicaServer {
     // which is a hierarchy of symbols.
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
     logger.debug(`onDocumentSymbol`);
-    return this.analyzer.getDeclarationsForUri(params.textDocument.uri);
+    return this.#analyzer.getDeclarationsForUri(params.textDocument.uri);
   }
-
 }
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = LSP.createConnection(LSP.ProposedFeatures.all);
 
-connection.onInitialize(
-  async (params: LSP.InitializeParams): Promise<LSP.InitializeResult> => {
-    const server = await ModelicaServer.initialize(connection, params);
-    server.register(connection);
-    return {
-      capabilities: server.capabilities(),
-    };
-  }
-);
+connection.onInitialize(async (params: LSP.InitializeParams): Promise<LSP.InitializeResult> => {
+  const server = await ModelicaServer.initialize(connection, params);
+  server.register(connection);
+  return {
+    capabilities: server.capabilities(),
+  };
+});
 
 // Listen on the connection
 connection.listen();

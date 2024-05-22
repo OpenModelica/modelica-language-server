@@ -65,15 +65,17 @@ export function forEach(node: SyntaxNode, callback: (n: SyntaxNode) => void | bo
  * @param start     The node to start iterating from
  * @param callback  Callback returning true if node is searched node.
  */
-export function findFirst(start: SyntaxNode, callback: (n: SyntaxNode) => boolean): SyntaxNode | null {
-
+export function findFirst(
+  start: SyntaxNode,
+  callback: (n: SyntaxNode) => boolean,
+): SyntaxNode | null {
   const cursor = start.walk();
   let reachedRoot = false;
   let retracing = false;
 
   while (!reachedRoot) {
     const node = cursor.currentNode();
-    if (callback(node) === true ) {
+    if (callback(node) === true) {
       return node;
     }
 
@@ -87,14 +89,14 @@ export function findFirst(start: SyntaxNode, callback: (n: SyntaxNode) => boolea
 
     retracing = true;
     while (retracing) {
-        if (!cursor.gotoParent()) {
-            retracing = false;
-            reachedRoot = true;
-        }
-
-        if (cursor.gotoNextSibling()) {
+      if (!cursor.gotoParent()) {
         retracing = false;
-        }
+        reachedRoot = true;
+      }
+
+      if (cursor.gotoNextSibling()) {
+        retracing = false;
+      }
     }
   }
 
@@ -145,7 +147,6 @@ export function findParent(
  * @param start   Syntax tree node.
  */
 export function getIdentifier(start: SyntaxNode): string | undefined {
-
   const node = findFirst(start, (n: SyntaxNode) => n.type == 'IDENT');
   return node?.text;
 }
@@ -157,7 +158,6 @@ export function getIdentifier(start: SyntaxNode): string | undefined {
  * @returns     String with class prefixes or `null` if no `class_prefixes` can be found.
  */
 export function getClassPrefixes(node: SyntaxNode): string | null {
-
   if (node.type !== 'class_definition') {
     return null;
   }

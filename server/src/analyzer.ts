@@ -44,23 +44,21 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import Parser = require('web-tree-sitter');
 
-import {
-  getAllDeclarationsInTree
-} from './util/declarations';
+import { getAllDeclarationsInTree } from './util/declarations';
 import { logger } from './util/logger';
 
 type AnalyzedDocument = {
-  document: TextDocument,
-  declarations: LSP.SymbolInformation[],
-  tree: Parser.Tree
-}
+  document: TextDocument;
+  declarations: LSP.SymbolInformation[];
+  tree: Parser.Tree;
+};
 
 export default class Analyzer {
-  private parser: Parser;
-  private uriToAnalyzedDocument: Record<string, AnalyzedDocument | undefined> = {};
+  #parser: Parser;
+  #uriToAnalyzedDocument: Record<string, AnalyzedDocument | undefined> = {};
 
-  constructor (parser: Parser) {
-    this.parser = parser;
+  public constructor(parser: Parser) {
+    this.#parser = parser;
   }
 
   public analyze(document: TextDocument): LSP.Diagnostic[] {
@@ -70,17 +68,17 @@ export default class Analyzer {
     const fileContent = document.getText();
     const uri = document.uri;
 
-    const tree = this.parser.parse(fileContent);
+    const tree = this.#parser.parse(fileContent);
     logger.debug(tree.rootNode.toString());
 
     // Get declarations
     const declarations = getAllDeclarationsInTree(tree, uri);
 
     // Update saved analysis for document uri
-    this.uriToAnalyzedDocument[uri] = {
+    this.#uriToAnalyzedDocument[uri] = {
       document,
       declarations,
-      tree
+      tree,
     };
 
     return diagnostics;
@@ -92,7 +90,7 @@ export default class Analyzer {
    * TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found in a given text document.
    */
   public getDeclarationsForUri(uri: string): LSP.SymbolInformation[] {
-    const tree = this.uriToAnalyzedDocument[uri]?.tree;
+    const tree = this.#uriToAnalyzedDocument[uri]?.tree;
 
     if (!tree?.rootNode) {
       return [];

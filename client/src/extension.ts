@@ -40,7 +40,7 @@ import {
   LanguageClient,
   LanguageClientOptions,
   ServerOptions,
-  TransportKind
+  TransportKind,
 } from 'vscode-languageclient/node';
 import { getFileExtension, getLanguage } from './getLanguage';
 import { fstat } from 'fs';
@@ -49,7 +49,7 @@ let client: LanguageClient;
 
 export function activate(context: ExtensionContext) {
   // Register event listener to set language for '.mo' files.
-  const checkedFiles: { [id: string]: boolean} = {};
+  const checkedFiles: { [id: string]: boolean } = {};
   workspace.onDidOpenTextDocument((document: TextDocument) => {
     if (checkedFiles[document.fileName]) {
       return;
@@ -73,9 +73,7 @@ export function activate(context: ExtensionContext) {
   });
 
   // The server is implemented in node, point to packed module
-  const serverModule = context.asAbsolutePath(
-    path.join('out', 'server.js')
-  );
+  const serverModule = context.asAbsolutePath(path.join('out', 'server.js'));
   if (!fs.existsSync(serverModule)) {
     throw new Error(`Can't find server module in ${serverModule}`);
   }
@@ -87,7 +85,7 @@ export function activate(context: ExtensionContext) {
     debug: {
       module: serverModule,
       transport: TransportKind.ipc,
-    }
+    },
   };
 
   // Options to control the language client
@@ -96,13 +94,13 @@ export function activate(context: ExtensionContext) {
     documentSelector: [
       {
         language: 'modelica',
-        scheme: 'file'
-      }
+        scheme: 'file',
+      },
     ],
     synchronize: {
       // Notify the server about file changes to '.clientrc files contained in the workspace
-      fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
-    }
+      fileEvents: workspace.createFileSystemWatcher('**/.clientrc'),
+    },
   };
 
   // Create the language client and start the client.
@@ -110,7 +108,7 @@ export function activate(context: ExtensionContext) {
     'modelicaLanguageServer',
     'Modelica Language Server',
     serverOptions,
-    clientOptions
+    clientOptions,
   );
 
   // Start the client. This will also launch the server
