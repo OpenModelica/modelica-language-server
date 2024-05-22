@@ -47,9 +47,9 @@ import * as fsSync from 'node:fs';
 import * as url from 'node:url';
 
 import { ModelicaDocument, ModelicaLibrary, ModelicaProject } from './project';
-import { uriToPath } from "./util";
 import { getAllDeclarationsInTree } from './util/declarations';
 import { logger } from './util/logger';
+import { uriToPath } from './util';
 
 export default class Analyzer {
   #project: ModelicaProject;
@@ -110,8 +110,8 @@ export default class Analyzer {
    * @param text the modification
    * @param range range to update, or `undefined` to replace the whole file
    */
-  public async updateDocument(uri: LSP.DocumentUri, text: string): Promise<void> {
-    await this.#project.updateDocument(uriToPath(uri), text);
+  public updateDocument(uri: LSP.DocumentUri, text: string, range?: LSP.Range): void {
+    this.#project.updateDocument(url.fileURLToPath(uri), text, range);
   }
 
   /**

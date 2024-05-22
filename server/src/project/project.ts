@@ -33,14 +33,14 @@
  *
  */
 
-import Parser from "web-tree-sitter";
-import * as LSP from "vscode-languageserver";
-import url from "node:url";
-import path from "node:path";
+import Parser from 'web-tree-sitter';
+import * as LSP from 'vscode-languageserver';
+import url from 'node:url';
+import path from 'node:path';
 
-import { ModelicaLibrary } from "./library";
+import { ModelicaLibrary } from './library';
 import { ModelicaDocument } from './document';
-import { logger } from "../util/logger";
+import { logger } from '../util/logger';
 
 /** Options for {@link ModelicaProject.getDocument} */
 export interface GetDocumentOptions {
@@ -117,7 +117,7 @@ export class ModelicaProject {
 
     for (const library of this.#libraries) {
       const relative = path.relative(library.path, documentPath);
-      const isSubdirectory = relative && !relative.startsWith("..") && !path.isAbsolute(relative);
+      const isSubdirectory = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
 
       // Assume that files can't be inside multiple libraries at the same time
       if (!isSubdirectory) {
@@ -155,12 +155,12 @@ export class ModelicaProject {
    * @param text the modification
    * @returns if the document was updated
    */
-  public async updateDocument(documentPath: string, text: string): Promise<boolean> {
+  public async updateDocument(documentPath: string, text: string, range?: LSP.Range): Promise<boolean> {
     logger.debug(`Updating document at '${documentPath}'...`);
 
     const doc = await this.getDocument(documentPath, { load: true });
     if (doc) {
-      doc.update(text);
+      doc.update(text, range);
       logger.debug(`Updated document '${documentPath}'`);
       return true;
     } else {
@@ -191,5 +191,4 @@ export class ModelicaProject {
   public get parser(): Parser {
     return this.#parser;
   }
-
 }

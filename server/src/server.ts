@@ -102,7 +102,7 @@ export class ModelicaServer {
       documentSymbolProvider: true,
       colorProvider: false,
       semanticTokensProvider: undefined,
-      textDocumentSync: LSP.TextDocumentSyncKind.Full,
+      textDocumentSync: LSP.TextDocumentSyncKind.Incremental,
       workspace: {
         workspaceFolders: {
           supported: true,
@@ -150,7 +150,8 @@ export class ModelicaServer {
   private async onDidChangeTextDocument(params: LSP.DidChangeTextDocumentParams): Promise<void> {
     logger.debug('onDidChangeTextDocument');
     for (const change of params.contentChanges) {
-      await this.#analyzer.updateDocument(params.textDocument.uri, change.text);
+      const range = 'range' in change ? change.range : undefined;
+      this.#analyzer.updateDocument(params.textDocument.uri, change.text, range);
     }
   }
 
