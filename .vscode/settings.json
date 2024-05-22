@@ -4,5 +4,15 @@
   "typescript.preferences.quoteStyle": "single",
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"
-  }
+  },
+  "prettier.configPath": "./.prettierrc.js",
+  "cSpell.words": [
+    "metamodelica",
+    "Modelica",
+    "nodelib",
+    "OSMC",
+    "redeclaration"
+  ],
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
 }

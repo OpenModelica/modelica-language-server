@@ -45,10 +45,10 @@ export const LOG_LEVEL_ENV_VAR = 'MODELICA_IDE_LOG_LEVEL';
 export const LOG_LEVELS = ['debug', 'log', 'info', 'warning', 'error'] as const;
 export const DEFAULT_LOG_LEVEL: LogLevel = 'info';
 
-type LogLevel = (typeof LOG_LEVELS)[number]
+type LogLevel = (typeof LOG_LEVELS)[number];
 
 const LOG_LEVELS_TO_MESSAGE_TYPES: {
-  [logLevel in LogLevel]: LSP.MessageType
+  [logLevel in LogLevel]: LSP.MessageType;
 } = {
   debug: LSP.MessageType.Debug,
   log: LSP.MessageType.Log,
@@ -87,7 +87,7 @@ export class Logger {
     [LSP.MessageType.Warning]: 'WARNING ⛔️',
     [LSP.MessageType.Info]: 'INFO',
     [LSP.MessageType.Log]: 'LOG',
-    [LSP.MessageType.Debug]: 'DEBUG'
+    [LSP.MessageType.Debug]: 'DEBUG',
   };
 
   public log(severity: LSP.MessageType, messageObjects: any[]) {

@@ -44,15 +44,12 @@ import * as Parser from 'web-tree-sitter';
 import * as TreeSitterUtil from './tree-sitter';
 import { logger } from './logger';
 
-const isEmpty = (data: string): boolean => typeof data === "string" && data.trim().length == 0;
+const isEmpty = (data: string): boolean => typeof data === 'string' && data.trim().length == 0;
 
-export type GlobalDeclarations = { [word: string]: LSP.SymbolInformation }
-export type Declarations = { [word: string]: LSP.SymbolInformation[] }
+export type GlobalDeclarations = { [word: string]: LSP.SymbolInformation };
+export type Declarations = { [word: string]: LSP.SymbolInformation[] };
 
-const GLOBAL_DECLARATION_LEAF_NODE_TYPES = new Set([
-  'if_statement',
-  'function_definition',
-]);
+const GLOBAL_DECLARATION_LEAF_NODE_TYPES = new Set(['if_statement', 'function_definition']);
 
 /**
  * Returns all declarations (functions or variables) from a given tree.
@@ -81,7 +78,10 @@ export function getAllDeclarationsInTree(tree: Parser.Tree, uri: string): LSP.Sy
  * @param uri   The document's uri.
  * @returns     Symbol information from node.
  */
-export function nodeToSymbolInformation(node: Parser.SyntaxNode, uri: string): LSP.SymbolInformation | null {
+export function nodeToSymbolInformation(
+  node: Parser.SyntaxNode,
+  uri: string,
+): LSP.SymbolInformation | null {
   const named = node.firstNamedChild;
 
   if (named === null) {
@@ -96,8 +96,8 @@ export function nodeToSymbolInformation(node: Parser.SyntaxNode, uri: string): L
   const kind = getKind(node);
 
   const containerName =
-    TreeSitterUtil.findParent(node, (p) => p.type === 'function_definition')
-      ?.firstNamedChild?.text || '';
+    TreeSitterUtil.findParent(node, (p) => p.type === 'function_definition')?.firstNamedChild
+      ?.text || '';
 
   return LSP.SymbolInformation.create(
     name,
@@ -115,7 +115,10 @@ export function nodeToSymbolInformation(node: Parser.SyntaxNode, uri: string): L
  * @param uri   The associated URI for this document.
  * @returns     LSP symbol information for definition.
  */
-function getDeclarationSymbolFromNode(node: Parser.SyntaxNode, uri: string): LSP.SymbolInformation | null {
+function getDeclarationSymbolFromNode(
+  node: Parser.SyntaxNode,
+  uri: string,
+): LSP.SymbolInformation | null {
   if (TreeSitterUtil.isDefinition(node)) {
     return nodeToSymbolInformation(node, uri);
   }
@@ -130,7 +133,6 @@ function getDeclarationSymbolFromNode(node: Parser.SyntaxNode, uri: string): LSP
  * @returns Symbol kind or `undefined`.
  */
 function getKind(node: Parser.SyntaxNode): LSP.SymbolKind | undefined {
-
   const classPrefixes = TreeSitterUtil.getClassPrefixes(node)?.split(/\s+/);
   if (classPrefixes === undefined) {
     return undefined;
