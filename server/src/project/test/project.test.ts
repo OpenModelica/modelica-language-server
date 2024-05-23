@@ -37,14 +37,13 @@ import Parser from 'web-tree-sitter';
 import { ModelicaProject, ModelicaLibrary } from '..';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { initializeParser } from '../../parser';
 
-const TEST_LIBRARY_PATH = path.normalize('./TestLibrary');
-const TEST_PACKAGE_PATH = path.resolve(TEST_LIBRARY_PATH, 'package.mo');
-const TEST_CLASS_PATH = path.resolve(TEST_LIBRARY_PATH, 'HalfAdder.mo');
+const TEST_LIBRARY_PATH = path.join(__dirname, 'TestLibrary');
+const TEST_PACKAGE_PATH = path.join(TEST_LIBRARY_PATH, 'package.mo');
+const TEST_CLASS_PATH = path.join(TEST_LIBRARY_PATH, 'HalfAdder.mo');
 
-const TEST_PACKAGE_CONTENT = `within;
-
-package TestLibrary
+const TEST_PACKAGE_CONTENT = `package TestLibrary
   annotation(version="1.0.0");
 end TestLibrary;
 `;
@@ -53,8 +52,8 @@ describe('ModelicaProject', () => {
   describe('an empty project', () => {
     let project: ModelicaProject;
 
-    before(() => {
-      const parser = new Parser();
+    beforeEach(async () => {
+      const parser = await initializeParser();
       project = new ModelicaProject(parser);
     });
 
@@ -80,7 +79,8 @@ describe('ModelicaProject', () => {
     let library: ModelicaLibrary;
 
     beforeEach(async () => {
-      project = new ModelicaProject(new Parser());
+      const parser = await initializeParser();
+      project = new ModelicaProject(parser);
       library = await ModelicaLibrary.load(project, TEST_LIBRARY_PATH, false);
       project.addLibrary(library);
     });
@@ -98,23 +98,22 @@ describe('ModelicaProject', () => {
         library.documents.get(TEST_PACKAGE_PATH),
         project.getDocument(TEST_PACKAGE_PATH),
       );
-      assert.equal(
-        library.documents.get(TEST_CLASS_PATH),
-        project.getDocument(TEST_CLASS_PATH),
-      );
-
+      assert.equal(library.documents.get(TEST_CLASS_PATH), project.getDocument(TEST_CLASS_PATH));
     });
 
     it('repeatedly adding documents has no effect', async () => {
       for (let i = 0; i < 5; i++) {
-        assert(!project.addDocument(TEST_PACKAGE_PATH));
-        assert(!project.addDocument(TEST_CLASS_PATH));
+        assert(!(await project.addDocument(TEST_PACKAGE_PATH)));
+        assert(!(await project.addDocument(TEST_CLASS_PATH)));
       }
     });
 
     it('documents can be updated', () => {
       const document = project.getDocument(TEST_PACKAGE_PATH)!;
-      assert.equal(document.getText(), TEST_PACKAGE_CONTENT);
+      assert.equal(
+        document.getText().replace(/\r\n/g, '\n'),
+        TEST_PACKAGE_CONTENT.replace(/\r\n/g, '\n'),
+      );
 
       const newContent = `within;
 
@@ -126,7 +125,7 @@ end TestLibrary;
       assert.equal(document.getText(), newContent);
     });
 
-    it('documents can be removed (and re-added)', () => {
+    it('documents can be removed (and re-added)', async () => {
       assert.notEqual(project.getDocument(TEST_CLASS_PATH), undefined);
 
       assert(project.removeDocument(TEST_CLASS_PATH));
@@ -136,7 +135,7 @@ end TestLibrary;
       assert(!project.removeDocument(TEST_CLASS_PATH));
 
       // can re-add document without issues
-      assert(project.addDocument(TEST_CLASS_PATH));
+      assert(await project.addDocument(TEST_CLASS_PATH));
       assert.notEqual(project.getDocument(TEST_CLASS_PATH), undefined);
     });
   });

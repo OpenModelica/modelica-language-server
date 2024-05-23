@@ -40,15 +40,14 @@
  */
 
 import * as LSP from 'vscode-languageserver/node';
-import { TextDocument } from 'vscode-languageserver-textdocument';
-import Parser = require('web-tree-sitter');
+import Parser from 'web-tree-sitter';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs';
 import * as url from 'node:url';
 
 import { ModelicaDocument, ModelicaLibrary, ModelicaProject } from './project';
-
+import { uriToPath } from "./util";
 import { getAllDeclarationsInTree } from './util/declarations';
 import { logger } from './util/logger';
 
@@ -100,7 +99,7 @@ export default class Analyzer {
    * @throws if the document does not belong to a library
    */
   public addDocument(uri: LSP.DocumentUri): void {
-    this.#project.addDocument(url.fileURLToPath(uri));
+    this.#project.addDocument(uriToPath(uri));
   }
 
   /**
@@ -112,7 +111,7 @@ export default class Analyzer {
    * @param range range to update, or `undefined` to replace the whole file
    */
   public updateDocument(uri: LSP.DocumentUri, text: string): void {
-    this.#project.updateDocument(url.fileURLToPath(uri), text);
+    this.#project.updateDocument(uriToPath(uri), text);
   }
 
   /**
@@ -122,7 +121,7 @@ export default class Analyzer {
    * @param uri uri to document to remove
    */
   public removeDocument(uri: LSP.DocumentUri): void {
-    this.#project.removeDocument(url.fileURLToPath(uri));
+    this.#project.removeDocument(uriToPath(uri));
   }
 
   /**
@@ -133,7 +132,7 @@ export default class Analyzer {
   public getDeclarationsForUri(uri: string): LSP.SymbolInformation[] {
     // TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found
     // in a given text document.
-    const path = url.fileURLToPath(uri);
+    const path = uriToPath(uri);
     const tree = this.#project.getDocument(path)?.tree;
 
     if (!tree?.rootNode) {

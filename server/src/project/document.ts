@@ -33,16 +33,16 @@
  *
  */
 
-import { TextDocument } from "vscode-languageserver-textdocument";
-import * as LSP from "vscode-languageserver/node";
-import Parser from "web-tree-sitter";
-import * as fs from "node:fs/promises";
-import * as url from "node:url";
-import * as path from "node:path";
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import * as LSP from 'vscode-languageserver/node';
+import Parser from 'web-tree-sitter';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 
-import { logger } from "../util/logger";
-import { ModelicaLibrary } from "./library";
-import { ModelicaProject } from "./project";
+import { pathToUri, uriToPath } from '../util';
+import { logger } from '../util/logger';
+import { ModelicaLibrary } from './library';
+import { ModelicaProject } from './project';
 
 export class ModelicaDocument implements TextDocument {
   readonly #library: ModelicaLibrary;
@@ -68,16 +68,22 @@ export class ModelicaDocument implements TextDocument {
   ): Promise<ModelicaDocument> {
     logger.debug(`Loading document at '${documentPath}'...`);
 
-    const content = await fs.readFile(documentPath, "utf-8");
-    // On caching: see issue https://github.com/tree-sitter/tree-sitter/issues/824
-    // TL;DR: it's faster to re-parse the content than it is to deserialize the cached tree.
-    const tree = library.project.parser.parse(content);
+    try {
+      const content = await fs.readFile(documentPath, 'utf-8');
 
-    return new ModelicaDocument(
-      library,
-      TextDocument.create(url.fileURLToPath(documentPath), "modelica", 0, content),
-      tree
-    );
+      const uri = pathToUri(documentPath);
+      const document = TextDocument.create(uri, 'modelica', 0, content);
+
+      // On caching: see issue https://github.com/tree-sitter/tree-sitter/issues/824
+      // TL;DR: it's faster to re-parse the content than it is to deserialize the cached tree.
+      const tree = library.project.parser.parse(content);
+
+      return new ModelicaDocument(library, document, tree);
+    } catch (err) {
+      throw new Error(
+        `Failed to load document at '${documentPath}': ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 
   /**
@@ -107,7 +113,7 @@ export class ModelicaDocument implements TextDocument {
   }
 
   public get path(): string {
-    return url.fileURLToPath(this.#document.uri);
+    return uriToPath(this.#document.uri);
   }
 
   public get languageId(): string {
@@ -132,8 +138,8 @@ export class ModelicaDocument implements TextDocument {
     const fileName = directories.pop()!;
 
     const packagePath: string[] = [this.#library.name, ...directories];
-    if (fileName !== "package.mo") {
-      packagePath.push(fileName.slice(0, fileName.length - ".mo".length));
+    if (fileName !== 'package.mo') {
+      packagePath.push(fileName.slice(0, fileName.length - '.mo'.length));
     }
 
     return packagePath;
