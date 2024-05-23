@@ -46,7 +46,7 @@ import fs from 'node:fs/promises';
 
 import { initializeParser } from './parser';
 import Analyzer from './analyzer';
-import { logger, setLogConnection, setLogLevel } from './util/logger';
+import { logger, setLoggerOptions } from './util/logger';
 
 /**
  * ModelicaServer collection all the important bits and bobs.
@@ -72,8 +72,10 @@ export class ModelicaServer {
     { capabilities, workspaceFolders }: LSP.InitializeParams,
   ): Promise<ModelicaServer> {
     // Initialize logger
-    setLogConnection(connection);
-    setLogLevel('debug');
+    setLoggerOptions({
+      connection,
+      logLevel: 'debug',
+    });
     logger.debug('Initializing...');
 
     const parser = await initializeParser();
