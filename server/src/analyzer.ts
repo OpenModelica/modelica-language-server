@@ -98,8 +98,8 @@ export default class Analyzer {
    * @param uri uri to document to add
    * @throws if the document does not belong to a library
    */
-  public addDocument(uri: LSP.DocumentUri): void {
-    this.#project.addDocument(uriToPath(uri));
+  public async addDocument(uri: LSP.DocumentUri): Promise<void> {
+    await this.#project.addDocument(uriToPath(uri));
   }
 
   /**
@@ -110,8 +110,8 @@ export default class Analyzer {
    * @param text the modification
    * @param range range to update, or `undefined` to replace the whole file
    */
-  public updateDocument(uri: LSP.DocumentUri, text: string, range?: LSP.Range): void {
-    this.#project.updateDocument(url.fileURLToPath(uri), text, range);
+  public async updateDocument(uri: LSP.DocumentUri, text: string, range?: LSP.Range): Promise<void> {
+    await this.#project.updateDocument(uriToPath(uri), text, range);
   }
 
   /**

@@ -151,7 +151,7 @@ export class ModelicaServer {
     logger.debug('onDidChangeTextDocument');
     for (const change of params.contentChanges) {
       const range = 'range' in change ? change.range : undefined;
-      this.#analyzer.updateDocument(params.textDocument.uri, change.text, range);
+      await this.#analyzer.updateDocument(params.textDocument.uri, change.text, range);
     }
   }
 
@@ -161,7 +161,7 @@ export class ModelicaServer {
     for (const change of params.changes) {
       switch (change.type) {
         case LSP.FileChangeType.Created:
-          this.#analyzer.addDocument(change.uri);
+          await this.#analyzer.addDocument(change.uri);
           break;
         case LSP.FileChangeType.Changed: {
           // TODO: incremental?

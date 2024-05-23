@@ -33,16 +33,15 @@
  *
  */
 
-import { TextDocument } from "vscode-languageserver-textdocument";
-import * as LSP from "vscode-languageserver/node";
-import Parser from "web-tree-sitter";
-import * as fs from "node:fs/promises";
-import * as url from "node:url";
-import * as TreeSitterUtil from "../util/tree-sitter";
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import * as LSP from 'vscode-languageserver/node';
+import Parser from 'web-tree-sitter';
+import * as fs from 'node:fs/promises';
+import * as TreeSitterUtil from '../util/tree-sitter';
 
-import { logger } from "../util/logger";
-import { ModelicaLibrary } from "./library";
-import { ModelicaProject } from "./project";
+import { logger } from '../util/logger';
+import { ModelicaLibrary } from './library';
+import { ModelicaProject } from './project';
 import { positionToPoint } from '../util/tree-sitter';
 import { pathToUri, uriToPath } from '../util';
 
@@ -52,7 +51,12 @@ export class ModelicaDocument implements TextDocument {
   readonly #document: TextDocument;
   #tree: Parser.Tree;
 
-  public constructor(project: ModelicaProject, library: ModelicaLibrary | null, document: TextDocument, tree: Parser.Tree) {
+  public constructor(
+    project: ModelicaProject,
+    library: ModelicaLibrary | null,
+    document: TextDocument,
+    tree: Parser.Tree,
+  ) {
     this.#project = project;
     this.#library = library;
     this.#document = document;
@@ -182,7 +186,7 @@ export class ModelicaDocument implements TextDocument {
   public get within(): string[] {
     const withinClause = this.#tree.rootNode.children
       .find((node) => node.type === 'within_clause')
-      ?.childForFieldName("name");
+      ?.childForFieldName('name');
     if (!withinClause) {
       return [];
     }
@@ -190,11 +194,11 @@ export class ModelicaDocument implements TextDocument {
     // TODO: Use a helper function from TreeSitterUtil
     const identifiers: string[] = [];
     TreeSitterUtil.forEach(withinClause, (node) => {
-      if (node.type === "name") {
+      if (node.type === 'name') {
         return true;
       }
 
-      if (node.type === "IDENT") {
+      if (node.type === 'IDENT') {
         identifiers.push(node.text);
       }
 

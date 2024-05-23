@@ -82,6 +82,27 @@ describe('ModelicaDocument', () => {
     assert.equal(document.getText().trim(), UPDATED_TEST_PACKAGE_CONTENT.trim());
   });
 
+  it('can update incrementally', () => {
+    const textDocument = createTextDocument('.', TEST_PACKAGE_CONTENT);
+    const tree = project.parser.parse(TEST_PACKAGE_CONTENT);
+    const document = new ModelicaDocument(project, library, textDocument, tree);
+    document.update(
+      '1.0.1',
+      {
+        start: {
+          line: 1,
+          character: 22,
+        },
+        end: {
+          line: 1,
+          character: 27,
+        },
+      }
+    );
+
+    assert.equal(document.getText().trim(), UPDATED_TEST_PACKAGE_CONTENT.trim());
+  });
+
   it('a file with no `within` clause has the correct package path', () => {
     const textDocument = createTextDocument('./package.mo', TEST_PACKAGE_CONTENT);
     const tree = project.parser.parse(TEST_PACKAGE_CONTENT);
