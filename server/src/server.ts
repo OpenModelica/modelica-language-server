@@ -36,7 +36,7 @@
 /* -----------------------------------------------------------------------------
  * Taken from bash-language-server and adapted to Modelica language server
  * https://github.com/bash-lsp/bash-language-server/blob/main/server/src/server.ts
- * -----------------------------------------------------------------------------
+ * ----------------------------------------------------------------------------
  */
 
 import * as LSP from 'vscode-languageserver/node';
@@ -44,6 +44,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { initializeParser } from './parser';
 import Analyzer from './analyzer';
+import { extractHoverInformation } from './util/hoverUtil';
 import { logger, setLogConnection, setLogLevel } from './util/logger';
 
 /**
@@ -90,7 +91,7 @@ export class ModelicaServer {
     return {
       textDocumentSync: LSP.TextDocumentSyncKind.Full,
       completionProvider: undefined,
-      hoverProvider: false,
+      hoverProvider: true,
       signatureHelpProvider: undefined,
       documentSymbolProvider: true,
       colorProvider: false,
@@ -98,6 +99,11 @@ export class ModelicaServer {
     };
   }
 
+  /**
+   * Register handlers for the events from the Language Server Protocol
+   *
+   * @param connection
+   */
   public register(connection: LSP.Connection): void {
     let currentDocument: TextDocument | null = null;
     let initialized = false;
@@ -105,17 +111,6 @@ export class ModelicaServer {
     // Make the text document manager listen on the connection
     // for open, change and close text document events
     this.#documents.listen(this.#connection);
-
-    connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
-
-    connection.onInitialized(async () => {
-      initialized = true;
-      if (currentDocument) {
-        // If we already have a document, analyze it now that we're initialized
-        // and the linter is ready.
-        this.analyzeDocument(currentDocument);
-      }
-    });
 
     // The content of a text document has changed. This event is emitted
     // when the text document first opened or when its content has changed.
@@ -130,24 +125,83 @@ export class ModelicaServer {
         this.analyzeDocument(document);
       }
     });
+
+    connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
+    connection.onHover(this.onHover.bind(this));
+
+    connection.onInitialized(async () => {
+      initialized = true;
+      if (currentDocument) {
+        // If we already have a document, analyze it now that we're initialized
+        // and the linter is ready.
+        this.analyzeDocument(currentDocument);
+      }
+    });
   }
 
   private async analyzeDocument(document: TextDocument) {
-    const diagnostics = this.#analyzer.analyze(document);
+    this.#analyzer.analyze(document);
   }
+
+  // ==============================
+  // Language server event handlers
+  // ==============================
 
   /**
    * Provide symbols defined in document.
    *
-   * @param params  Unused.
-   * @returns       Symbol information.
+   * @param symbolParams  Document symbols of given text document.
+   * @returns             Symbol information.
    */
-  private onDocumentSymbol(params: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
+  private onDocumentSymbol(symbolParams: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
     // TODO: ideally this should return LSP.DocumentSymbol[] instead of LSP.SymbolInformation[]
     // which is a hierarchy of symbols.
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
     logger.debug(`onDocumentSymbol`);
-    return this.#analyzer.getDeclarationsForUri(params.textDocument.uri);
+    return this.#analyzer.getDeclarationsForUri(symbolParams.textDocument.uri);
+  }
+
+  /**
+   * Provide hover information at given text document position.
+   *
+   * @param position  Text document position.
+   * @returns         Hover information.
+   */
+  private async onHover(
+    position: LSP.TextDocumentPositionParams
+  ): Promise<LSP.Hover | null> {
+    logger.debug('onHover');
+
+    const node = this.#analyzer.NodeFromTextPosition(position);
+    if (node === null) {
+      return null;
+    }
+
+    const identifier = node.text.trim();
+    const symbolsMatchingWord = this.#analyzer.getReachableDefinitions(
+      position.textDocument.uri,
+      position.position,
+      identifier);
+    logger.debug('symbolsMatchingWord: ', symbolsMatchingWord);
+    if (symbolsMatchingWord.length == 0) {
+      return null;
+    }
+
+    // TODO: Get node defining symbol and extract hover information of that one.
+    const hoverInfo = extractHoverInformation(node);
+    if (hoverInfo == null) {
+      return null;
+    }
+    logger.debug(hoverInfo);
+
+    const markdown : LSP.MarkupContent = {
+      kind: LSP.MarkupKind.Markdown,
+      value: hoverInfo
+    };
+
+    return {
+      contents: markdown
+    } as LSP.Hover;
   }
 }
 

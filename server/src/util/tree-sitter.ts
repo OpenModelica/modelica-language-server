@@ -42,8 +42,6 @@
 import * as LSP from 'vscode-languageserver/node';
 import { SyntaxNode } from 'web-tree-sitter';
 
-import { logger } from './logger';
-
 /**
  * Recursively iterate over all nodes in a tree.
  *
@@ -127,6 +125,38 @@ export function isDefinition(n: SyntaxNode): boolean {
   }
 }
 
+/**
+ * Get input/output prefix from node.
+ *
+ * @param n Node of tree
+ * @returns Base prefix or undefined.
+ */
+export function getPrefix(n: SyntaxNode): string | undefined {
+  switch (n.type) {
+    case 'short_class_specifier':
+      return n.childForFieldName('basePrefix')?.text;
+    case 'component_clause':
+      return n.childForFieldName('input')?.text || n.childForFieldName('output')?.text;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Check if node is parameter.
+ *
+ * @param n Node of tree
+ * @returns True if node has parameter keyword.
+ */
+export function isParameter(n: SyntaxNode): boolean {
+  switch (n.type) {
+    case 'component_clause':
+      return n.childForFieldName('parameter') !== null;
+    default:
+      return false;
+  }
+}
+
 export function findParent(
   start: SyntaxNode,
   predicate: (n: SyntaxNode) => boolean,
@@ -168,4 +198,25 @@ export function getClassPrefixes(node: SyntaxNode): string | null {
   }
 
   return classPrefixNode.text;
+}
+
+/**
+ * Get description string.
+ *
+ * @param node  Syntax node
+ * @returns     Description string of node.
+ */
+export function getDescriptionString(node: SyntaxNode): string | undefined {
+  let classNode: SyntaxNode | null;
+
+  switch (node.type) {
+    case 'class_definition':
+      classNode = node.childForFieldName('classSpecifier');
+      if (classNode !== null) {
+        return getDescriptionString(classNode);
+      }
+      return undefined;
+    default:
+      return node.childForFieldName('descriptionString')?.text;
+  }
 }

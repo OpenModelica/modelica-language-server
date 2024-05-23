@@ -42,14 +42,54 @@ import * as LSP from 'vscode-languageserver/node';
 import * as Parser from 'web-tree-sitter';
 
 import * as TreeSitterUtil from './tree-sitter';
-import { logger } from './logger';
 
 const isEmpty = (data: string): boolean => typeof data === 'string' && data.trim().length == 0;
 
 export type GlobalDeclarations = { [word: string]: LSP.SymbolInformation };
 export type Declarations = { [word: string]: LSP.SymbolInformation[] };
 
-const GLOBAL_DECLARATION_LEAF_NODE_TYPES = new Set(['if_statement', 'function_definition']);
+export function getLocalDeclarations({
+  node,
+  uri,
+}: {
+  node: Parser.SyntaxNode | null
+  uri: string
+}): Declarations {
+  const declarations: Declarations = {};
+
+  // Bottom up traversal to capture all local and scoped declarations
+  const walk = (node: Parser.SyntaxNode | null) => {
+    if (node) {
+      for (const childNode of node.children) {
+        let symbol: LSP.SymbolInformation | null = null;
+
+        // local variables
+        if (childNode.type === 'component_reference') {
+          const identifierNode = childNode.children.filter(
+            (child) => child.type === 'IDENT',
+          )[0];
+          if (identifierNode) {
+            symbol = nodeToSymbolInformation(identifierNode, uri);
+          }
+        } else {
+          symbol = getDeclarationSymbolFromNode(childNode, uri);
+        }
+
+        if (symbol) {
+          if (!declarations[symbol.name]) {
+            declarations[symbol.name] = [];
+          }
+          declarations[symbol.name].push(symbol);
+        }
+      }
+
+      walk(node.parent);
+    }
+  };
+  walk(node);
+
+  return declarations;
+}
 
 /**
  * Returns all declarations (functions or variables) from a given tree.

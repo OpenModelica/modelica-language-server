@@ -41,7 +41,6 @@
 
 import * as LSP from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-
 import Parser = require('web-tree-sitter');
 
 import { getAllDeclarationsInTree } from './util/declarations';
@@ -97,5 +96,152 @@ export default class Analyzer {
     }
 
     return getAllDeclarationsInTree(tree, uri);
+  }
+
+  /**
+   * Get all reachable definitions matching identifier.
+   *
+   * TODO: All available analyzed documents are searched. Filter for reachable
+   * files and use scope of identifier.
+   *
+   * @param uri         Text document.
+   * @param position    Position of `identifier` in text document.
+   * @param identifier  Identifier name.
+   * @returns           Array of symbol information for `identifier.
+   */
+  public getReachableDefinitions(
+    uri: string,
+    position: LSP.Position,
+    identifier: string): LSP.SymbolInformation[] {
+
+    const declarations:LSP.SymbolInformation[] = [];
+
+    // Find all declarations matching identifier.
+    for (const availableUri of Object.keys(this.#uriToAnalyzedDocument)) {
+      // TODO: Filter reachable uri, e.g. because of an include
+      const decl = this.#uriToAnalyzedDocument[availableUri]?.declarations;
+      if (decl) {
+        for (const d of decl) {
+          if (d.name === identifier) {
+            declarations.push(d);
+          }
+        }
+      }
+    }
+
+    // TODO: Filter reachable declarations from scope.
+    return declarations;
+  }
+
+  /**
+   * Find a block of comments above a line position
+   */
+  public commentsAbove(uri: string, line: number): string | null {
+    const doc = this.#uriToAnalyzedDocument[uri]?.document;
+    if (!doc) {
+      return null;
+    }
+
+    let commentBlock = [];
+    let inBlockComment = false;
+
+    // start from the line above
+    let commentBlockIndex = line - 1;
+
+    while (commentBlockIndex >= 0) {
+      let currentLineText = doc.getText({
+        start: { line: commentBlockIndex, character: 0 },
+        end: { line: commentBlockIndex + 1, character: 0 },
+      }).trim();
+
+      if (inBlockComment) {
+        if (currentLineText.startsWith('/*')) {
+          inBlockComment = false;
+          // Remove the /* from the start
+          currentLineText = currentLineText.substring(2).trim();
+        } else {
+          // Remove leading * from lines within the block comment
+          currentLineText = currentLineText.replace(/^\*\s?/, '').trim();
+        }
+        if (currentLineText) { // Don't add empty lines
+          commentBlock.push(currentLineText);
+        }
+      } else {
+        if (currentLineText.startsWith('//')) {
+          // Strip the // and add to block
+          commentBlock.push(currentLineText.substring(2).trim());
+        } else if (currentLineText.endsWith('*/')) {
+          inBlockComment = true;
+          // Remove the */ from the end
+          currentLineText = currentLineText.substring(0, currentLineText.length - 2).trim();
+          if (currentLineText) { // Don't add empty lines
+            commentBlock.push(currentLineText);
+          }
+        } else {
+          break; // Stop if the current line is not part of a comment
+        }
+      }
+
+      commentBlockIndex -= 1;
+    }
+
+    if (commentBlock.length) {
+      commentBlock = [...commentBlock.reverse()];
+      return commentBlock.join('\n\n');
+    }
+
+    return null;
+  }
+
+  /**
+   * Return IDENT node from given text position.
+   *
+   * Check if a node of type identifier exists at given position and return it.
+   *
+   * @param params  Text document position.
+   * @returns       Identifier syntax node.
+   */
+  public NodeFromTextPosition(
+    params: LSP.TextDocumentPositionParams,
+  ): Parser.SyntaxNode | null {
+
+    const node = this.nodeAtPoint(
+      params.textDocument.uri,
+      params.position.line,
+      params.position.character);
+
+    if (!node || node.childCount > 0 || node.text.trim() === '') {
+      return null;
+    }
+
+    // Filter for identifier
+    if (node.type !== "IDENT") {
+      return null;
+    }
+
+    return node;
+  }
+
+  /**
+   * Return abstract syntax tree node representing text position.
+   *
+   * @param uri
+   * @param line
+   * @param column
+   * @returns       Node matching position.
+   */
+  private nodeAtPoint(
+    uri: string,
+    line: number,
+    column: number,
+  ): Parser.SyntaxNode | null {
+    const tree = this.#uriToAnalyzedDocument[uri]?.tree;
+
+    if (!tree?.rootNode) {
+      // Check for lacking rootNode (due to failed parse?)
+      return null;
+    }
+
+    return tree.rootNode.descendantForPosition({ row: line, column });
   }
 }
