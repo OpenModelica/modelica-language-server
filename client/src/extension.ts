@@ -43,7 +43,6 @@ import {
   TransportKind,
 } from 'vscode-languageclient/node';
 import { getFileExtension, getLanguage } from './getLanguage';
-import { fstat } from 'fs';
 
 let client: LanguageClient;
 

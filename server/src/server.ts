@@ -39,13 +39,11 @@
  * ----------------------------------------------------------------------------
  */
 
-import * as path from 'node:path';
 import * as LSP from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { initializeParser } from './parser';
 import Analyzer from './analyzer';
-import { uniqueBasedOnHash } from './util/array';
 import { extractHoverInformation } from './util/hoverUtil';
 import { logger, setLogConnection, setLogLevel } from './util/logger';
 
@@ -142,34 +140,7 @@ export class ModelicaServer {
   }
 
   private async analyzeDocument(document: TextDocument) {
-    const diagnostics = this.#analyzer.analyze(document);
-  }
-
-  private getCommentForSymbol({
-    currentUri,
-    symbol,
-  }: {
-    symbol: LSP.SymbolInformation
-    currentUri: string
-  }): string {
-
-    logger.debug(`getDocumentationForSymbol: symbol=${symbol.name} uri=${symbol.location.uri}`);
-
-    const symbolUri = symbol.location.uri;
-    const symbolStartLine = symbol.location.range.start.line;
-
-    const commentAboveSymbol = this.#analyzer.commentsAbove(symbolUri, symbolStartLine);
-    const commentAbove = commentAboveSymbol ? `\n\n${commentAboveSymbol}` : '';
-    const hoverHeader = `${symbolKindToDescription(symbol.kind)}: **${symbol.name}**`;
-    const symbolLocation =
-      symbolUri !== currentUri
-        ? `in ${path.relative(path.dirname(currentUri), symbolUri)}`
-        : `on line ${symbolStartLine + 1}`;
-
-    // TODO: An improvement could be to add show the symbol definition in the hover instead
-    // of the defined location – similar to how VSCode works for languages like TypeScript.
-
-    return `\n${commentAbove}`;
+    this.#analyzer.analyze(document);
   }
 
   // ==============================
@@ -216,6 +187,7 @@ export class ModelicaServer {
       return null;
     }
 
+    // TODO: Get node defining symbol and extract hover information of that one.
     const hoverInfo = extractHoverInformation(node);
     if (hoverInfo == null) {
       return null;
@@ -230,53 +202,6 @@ export class ModelicaServer {
     return {
       contents: markdown
     } as LSP.Hover;
-  }
-}
-
-/**
- * Deduplicate symbols by prioritizing the current file.
- */
-function deduplicateSymbols({
-  symbols,
-  currentUri,
-}: {
-  symbols: LSP.SymbolInformation[]
-  currentUri: string
-}) {
-  const isCurrentFile = ({ location: { uri } }: LSP.SymbolInformation) =>
-    uri === currentUri;
-
-  const getSymbolId = ({ name, kind }: LSP.SymbolInformation) => `${name}${kind}`;
-
-  const symbolsCurrentFile = symbols.filter((s) => isCurrentFile(s));
-
-  const symbolsOtherFiles = symbols
-    .filter((s) => !isCurrentFile(s))
-    // Remove identical symbols matching current file
-    .filter(
-      (symbolOtherFiles) =>
-        !symbolsCurrentFile.some(
-          (symbolCurrentFile) =>
-            getSymbolId(symbolCurrentFile) === getSymbolId(symbolOtherFiles),
-        ),
-    );
-
-  // NOTE: it might be that uniqueBasedOnHash is not needed anymore
-  return uniqueBasedOnHash([...symbolsCurrentFile, ...symbolsOtherFiles], getSymbolId);
-}
-
-function symbolKindToDescription(kind: LSP.SymbolKind): string {
-  switch (kind) {
-    case LSP.SymbolKind.Class:
-      return 'Class';
-    case LSP.SymbolKind.Function:
-      return 'Function';
-    case LSP.SymbolKind.Package:
-      return 'Package';
-    case LSP.SymbolKind.TypeParameter:
-      return 'Type';
-    default:
-      return 'Modelica symbol';
   }
 }
 

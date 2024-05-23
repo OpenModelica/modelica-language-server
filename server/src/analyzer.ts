@@ -41,12 +41,10 @@
 
 import * as LSP from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import * as fs from 'fs';
 import Parser = require('web-tree-sitter');
 
 import { getAllDeclarationsInTree } from './util/declarations';
 import { logger } from './util/logger';
-import { log } from 'console';
 
 type AnalyzedDocument = {
   document: TextDocument;
@@ -120,7 +118,7 @@ export default class Analyzer {
 
     // Find all declarations matching identifier.
     for (const availableUri of Object.keys(this.#uriToAnalyzedDocument)) {
-      // TODO: Filter reachable uri, e.g. because of an inclue
+      // TODO: Filter reachable uri, e.g. because of an include
       const decl = this.#uriToAnalyzedDocument[availableUri]?.declarations;
       if (decl) {
         for (const d of decl) {

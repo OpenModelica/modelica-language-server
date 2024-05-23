@@ -42,22 +42,17 @@ import * as LSP from 'vscode-languageserver/node';
 import * as Parser from 'web-tree-sitter';
 
 import * as TreeSitterUtil from './tree-sitter';
-import { logger } from './logger';
 
 const isEmpty = (data: string): boolean => typeof data === 'string' && data.trim().length == 0;
 
 export type GlobalDeclarations = { [word: string]: LSP.SymbolInformation };
 export type Declarations = { [word: string]: LSP.SymbolInformation[] };
 
-const GLOBAL_DECLARATION_LEAF_NODE_TYPES = new Set(['if_statement', 'function_definition']);
-
 export function getLocalDeclarations({
   node,
-  rootNode,
   uri,
 }: {
   node: Parser.SyntaxNode | null
-  rootNode: Parser.SyntaxNode
   uri: string
 }): Declarations {
   const declarations: Declarations = {};

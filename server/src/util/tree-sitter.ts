@@ -42,8 +42,6 @@
 import * as LSP from 'vscode-languageserver/node';
 import { SyntaxNode } from 'web-tree-sitter';
 
-import { logger } from './logger';
-
 /**
  * Recursively iterate over all nodes in a tree.
  *

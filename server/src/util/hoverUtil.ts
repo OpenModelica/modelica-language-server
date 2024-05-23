@@ -1,6 +1,5 @@
 import { SyntaxNode } from 'web-tree-sitter';
 import * as TreeSitterUtil from './tree-sitter';
-import * as LSP from 'vscode-languageserver';
 import { logger } from './logger';
 
 /**
@@ -8,6 +7,10 @@ import { logger } from './logger';
  *
  * Documentation and information for class description, inputs, outputs and
  * parameters.
+ *
+ * TODO: Modify this function to accept class_definition and
+ * component_declaration and so on.
+ * TODO: Use querries instead of checking children.
  *
  * @param node Syntax Node.
  *
@@ -22,7 +25,7 @@ export function extractHoverInformation(node: SyntaxNode): string | null {
     }
 
     // Check if node is the first IDENT child of the class_definition, indicating it's the class name.
-    const isClassName = classDefNode.namedChildren.some((child, _) =>
+    const isClassName = classDefNode.namedChildren.some((child) =>
       child.type === 'long_class_specifier' &&
       child.firstChild?.type === 'IDENT' &&
       child.firstChild?.text === node.text);
@@ -167,36 +170,4 @@ function extractComponentInformation(
     parameterInputsInfo: parameterInputsString,
     parameterOutputsInfo: parameterOutputsString,
   };
-}
-
-function extractParameterInformation(classDefNode: SyntaxNode): string {
-  const parametersInfo: string[] = [];
-
-  TreeSitterUtil.forEach(classDefNode, (node) => {
-
-      if (node.type === 'component_clause' && node.text.includes('parameter')) {
-
-              const typeSpecifierNode = node.childForFieldName('typeSpecifier');
-              logger.debug(`Type specifier node: ${typeSpecifierNode}`);
-              const typeSpecifier = typeSpecifierNode ? typeSpecifierNode.text : "Unknown Type";
-
-              const componentDeclarationNode = node.childForFieldName('componentDeclarations');
-
-              const declarationNode = componentDeclarationNode?.firstChild?.childForFieldName('declaration');
-              logger.debug(`Declaration node: ${declarationNode}`);
-              const identifier = declarationNode ? declarationNode.text : "Unknown Identifier";
-
-              // Extracting description from description_string node
-              const descriptionNode = componentDeclarationNode?.firstChild?.childForFieldName('descriptionString');
-              const description = descriptionNode ? descriptionNode.text : '';
-
-              parametersInfo.push(`${typeSpecifier} ${identifier} ${description}\n`);
-          }
-      return true;
-  });
-
-  if (parametersInfo.length > 0) {
-      return "\n## Parameters:\n" + parametersInfo.join('\n');
-  }
-  return '';
 }
