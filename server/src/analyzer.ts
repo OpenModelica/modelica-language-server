@@ -44,26 +44,22 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import * as fs from 'fs';
 import Parser = require('web-tree-sitter');
 
-import {
-  getLocalDeclarations,
-  getAllDeclarationsInTree
-} from './util/declarations';
+import { getAllDeclarationsInTree } from './util/declarations';
 import { logger } from './util/logger';
 import { log } from 'console';
 
 type AnalyzedDocument = {
-  document: TextDocument,
-  declarations: LSP.SymbolInformation[],
-  tree: Parser.Tree
-}
+  document: TextDocument;
+  declarations: LSP.SymbolInformation[];
+  tree: Parser.Tree;
+};
 
 export default class Analyzer {
-  private parser: Parser;
-  private uriToAnalyzedDocument: Record<string, AnalyzedDocument | undefined> = {};
+  #parser: Parser;
+  #uriToAnalyzedDocument: Record<string, AnalyzedDocument | undefined> = {};
 
-  constructor(parser:Parser)
-  {
-    this.parser = parser;
+  public constructor(parser: Parser) {
+    this.#parser = parser;
   }
 
   public analyze(document: TextDocument): LSP.Diagnostic[] {
@@ -73,14 +69,14 @@ export default class Analyzer {
     const fileContent = document.getText();
     const uri = document.uri;
 
-    const tree = this.parser.parse(fileContent);
+    const tree = this.#parser.parse(fileContent);
     logger.debug(tree.rootNode.toString());
 
     // Get declarations
     const declarations = getAllDeclarationsInTree(tree, uri);
 
     // Update saved analysis for document uri
-    this.uriToAnalyzedDocument[uri] = {
+    this.#uriToAnalyzedDocument[uri] = {
       document,
       declarations,
       tree,
@@ -95,7 +91,7 @@ export default class Analyzer {
    * TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found in a given text document.
    */
   public getDeclarationsForUri(uri: string): LSP.SymbolInformation[] {
-    const tree = this.uriToAnalyzedDocument[uri]?.tree;
+    const tree = this.#uriToAnalyzedDocument[uri]?.tree;
 
     if (!tree?.rootNode) {
       return [];
@@ -123,9 +119,9 @@ export default class Analyzer {
     const declarations:LSP.SymbolInformation[] = [];
 
     // Find all declarations matching identifier.
-    for (const availableUri of Object.keys(this.uriToAnalyzedDocument)) {
+    for (const availableUri of Object.keys(this.#uriToAnalyzedDocument)) {
       // TODO: Filter reachable uri, e.g. because of an inclue
-      const decl = this.uriToAnalyzedDocument[availableUri]?.declarations;
+      const decl = this.#uriToAnalyzedDocument[availableUri]?.declarations;
       if (decl) {
         for (const d of decl) {
           if (d.name === identifier) {
@@ -143,7 +139,7 @@ export default class Analyzer {
    * Find a block of comments above a line position
    */
   public commentsAbove(uri: string, line: number): string | null {
-    const doc = this.uriToAnalyzedDocument[uri]?.document;
+    const doc = this.#uriToAnalyzedDocument[uri]?.document;
     if (!doc) {
       return null;
     }
@@ -241,7 +237,7 @@ export default class Analyzer {
     line: number,
     column: number,
   ): Parser.SyntaxNode | null {
-    const tree = this.uriToAnalyzedDocument[uri]?.tree;
+    const tree = this.#uriToAnalyzedDocument[uri]?.tree;
 
     if (!tree?.rootNode) {
       // Check for lacking rootNode (due to failed parse?)

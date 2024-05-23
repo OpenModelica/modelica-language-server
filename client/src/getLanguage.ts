@@ -36,7 +36,7 @@
 import * as path from 'path';
 import { TextDocument } from 'vscode';
 
-type LanguageTypes = 'modelica' | 'metamodelica' | 'unknown'
+type LanguageTypes = 'modelica' | 'metamodelica' | 'unknown';
 
 export function getFileExtension(document: TextDocument): string | undefined {
   const uri = document.uri;

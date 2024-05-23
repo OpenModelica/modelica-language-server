@@ -50,7 +50,7 @@ import * as path from 'path';
  */
 export async function initializeParser(): Promise<Parser> {
   await Parser.init();
-  const parser = new Parser;
+  const parser = new Parser();
 
   const modelicaWasmFile = path.join(__dirname, 'tree-sitter-modelica.wasm');
   if (!fs.existsSync(modelicaWasmFile)) {
