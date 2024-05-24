@@ -110,8 +110,8 @@ export default class Analyzer {
    * @param text the modification
    * @param range range to update, or `undefined` to replace the whole file
    */
-  public updateDocument(uri: LSP.DocumentUri, text: string): void {
-    this.#project.updateDocument(uriToPath(uri), text);
+  public async updateDocument(uri: LSP.DocumentUri, text: string): Promise<void> {
+    await this.#project.updateDocument(uriToPath(uri), text);
   }
 
   /**
@@ -129,11 +129,12 @@ export default class Analyzer {
    *
    * TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found in a given text document.
    */
-  public getDeclarationsForUri(uri: string): LSP.SymbolInformation[] {
+  public async getDeclarationsForUri(uri: string): Promise<LSP.SymbolInformation[]> {
     // TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found
     // in a given text document.
     const path = uriToPath(uri);
-    const tree = this.#project.getDocument(path)?.tree;
+    const document = await this.#project.getDocument(path);
+    const tree = document?.tree;
 
     if (!tree?.rootNode) {
       return [];

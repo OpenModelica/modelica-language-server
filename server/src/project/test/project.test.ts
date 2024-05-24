@@ -61,16 +61,9 @@ describe('ModelicaProject', () => {
       assert.equal(project.libraries.length, 0);
     });
 
-    it('should not allow loading documents', () => {
-      assert.rejects(async () => {
-        await project.addDocument(TEST_CLASS_PATH);
-      });
-      assert.equal(project.getDocument(TEST_CLASS_PATH), undefined);
-    });
-
-    it('updating and deleting documents does nothing', () => {
-      assert(!project.updateDocument(TEST_CLASS_PATH, 'file content'));
-      assert(!project.removeDocument(TEST_CLASS_PATH));
+    it('updating and deleting documents does nothing', async () => {
+      assert(!await project.updateDocument(TEST_CLASS_PATH, 'file content'));
+      assert(!await project.removeDocument(TEST_CLASS_PATH));
     });
   });
 
@@ -91,14 +84,14 @@ describe('ModelicaProject', () => {
     });
 
     it('should add all the documents in the library', async () => {
-      assert.notEqual(project.getDocument(TEST_PACKAGE_PATH), undefined);
-      assert.notEqual(project.getDocument(TEST_CLASS_PATH), undefined);
+      assert.notEqual(await project.getDocument(TEST_PACKAGE_PATH), undefined);
+      assert.notEqual(await project.getDocument(TEST_CLASS_PATH), undefined);
 
       assert.equal(
         library.documents.get(TEST_PACKAGE_PATH),
-        project.getDocument(TEST_PACKAGE_PATH),
+        await project.getDocument(TEST_PACKAGE_PATH),
       );
-      assert.equal(library.documents.get(TEST_CLASS_PATH), project.getDocument(TEST_CLASS_PATH));
+      assert.equal(library.documents.get(TEST_CLASS_PATH), await project.getDocument(TEST_CLASS_PATH));
     });
 
     it('repeatedly adding documents has no effect', async () => {
@@ -108,8 +101,8 @@ describe('ModelicaProject', () => {
       }
     });
 
-    it('documents can be updated', () => {
-      const document = project.getDocument(TEST_PACKAGE_PATH)!;
+    it('documents can be updated', async () => {
+      const document = (await project.getDocument(TEST_PACKAGE_PATH))!;
       assert.equal(
         document.getText().replace(/\r\n/g, '\n'),
         TEST_PACKAGE_CONTENT.replace(/\r\n/g, '\n'),
@@ -121,22 +114,21 @@ package TestLibrary
   annotation(version="1.0.1");
 end TestLibrary;
 `;
-      assert(project.updateDocument(document.path, newContent));
+      assert(await project.updateDocument(document.path, newContent));
       assert.equal(document.getText(), newContent);
     });
 
     it('documents can be removed (and re-added)', async () => {
-      assert.notEqual(project.getDocument(TEST_CLASS_PATH), undefined);
+      assert.notEqual(await project.getDocument(TEST_CLASS_PATH), undefined);
 
-      assert(project.removeDocument(TEST_CLASS_PATH));
-      assert.equal(project.getDocument(TEST_CLASS_PATH), undefined);
+      assert(await project.removeDocument(TEST_CLASS_PATH));
 
       // no effect -- already removed
-      assert(!project.removeDocument(TEST_CLASS_PATH));
+      assert(!await project.removeDocument(TEST_CLASS_PATH));
 
       // can re-add document without issues
       assert(await project.addDocument(TEST_CLASS_PATH));
-      assert.notEqual(project.getDocument(TEST_CLASS_PATH), undefined);
+      assert.notEqual(await project.getDocument(TEST_CLASS_PATH), undefined);
     });
   });
 });

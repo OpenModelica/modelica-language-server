@@ -71,11 +71,11 @@ export class ModelicaLibrary {
     logger.info(`Loading ${isWorkspace ? 'workspace' : 'library'} at '${libraryPath}'...`);
 
     const library = new ModelicaLibrary(project, libraryPath, isWorkspace);
-    const workspaceRootDocument = await ModelicaDocument.load(library, path.join(libraryPath, "package.mo"));
+    const workspaceRootDocument = await ModelicaDocument.load(project, library, path.join(libraryPath, 'package.mo'));
 
     // Find the root path of the library and update library.#path.
     // It might have been set incorrectly if we opened a child folder.
-    for (let i = 0; i < workspaceRootDocument.packagePath.length - 1; i++) {
+    for (let i = 0; i < workspaceRootDocument.within.length; i++) {
       library.#path = path.dirname(library.#path);
     }
 
@@ -87,7 +87,7 @@ export class ModelicaLibrary {
     });
 
     for (const entry of entries) {
-      const document = await ModelicaDocument.load(library, entry.path);
+      const document = await ModelicaDocument.load(project, library, entry.path);
       library.#documents.set(entry.path, document);
     }
 

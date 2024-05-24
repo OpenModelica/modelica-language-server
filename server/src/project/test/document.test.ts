@@ -76,7 +76,7 @@ describe('ModelicaDocument', () => {
   it('can update the entire document', () => {
     const textDocument = createTextDocument('.', TEST_PACKAGE_CONTENT);
     const tree = project.parser.parse(TEST_PACKAGE_CONTENT);
-    const document = new ModelicaDocument(library, textDocument, tree);
+    const document = new ModelicaDocument(project, library, textDocument, tree);
     document.update(UPDATED_TEST_PACKAGE_CONTENT);
 
     assert.equal(document.getText().trim(), UPDATED_TEST_PACKAGE_CONTENT.trim());
@@ -85,18 +85,16 @@ describe('ModelicaDocument', () => {
   it('a file with no `within` clause has the correct package path', () => {
     const textDocument = createTextDocument('./package.mo', TEST_PACKAGE_CONTENT);
     const tree = project.parser.parse(TEST_PACKAGE_CONTENT);
-    const document = new ModelicaDocument(library, textDocument, tree);
+    const document = new ModelicaDocument(project, library, textDocument, tree);
 
-    assert.deepEqual(document.packagePath, ['TestPackage']);
     assert.deepEqual(document.within, []);
   });
 
   it('a file with a `within` clause has the correct package path', () => {
     const textDocument = createTextDocument('./Foo/Bar/Frobnicator.mo', TEST_CLASS_CONTENT);
     const tree = project.parser.parse(TEST_CLASS_CONTENT);
-    const document = new ModelicaDocument(library, textDocument, tree);
+    const document = new ModelicaDocument(project, library, textDocument, tree);
 
-    assert.deepEqual(document.packagePath, ['TestPackage', 'Foo', 'Bar', 'Frobnicator']);
     assert.deepEqual(document.within, ['TestPackage', 'Foo', 'Bar']);
   });
 });

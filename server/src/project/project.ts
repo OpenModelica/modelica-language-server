@@ -42,6 +42,16 @@ import { ModelicaLibrary } from "./library";
 import { ModelicaDocument } from './document';
 import { logger } from "../util/logger";
 
+/** Options for {@link ModelicaProject.getDocument} */
+export interface GetDocumentOptions {
+    /**
+     * `true` to try loading the document from disk if it is not already loaded.
+     *
+     * Default value: `true`.
+     */
+    load?: boolean,
+}
+
 export class ModelicaProject {
   readonly #parser: Parser;
   readonly #libraries: ModelicaLibrary[];
@@ -62,15 +72,30 @@ export class ModelicaProject {
   /**
    * Finds the document identified by the given path.
    *
+   * Will load the document from disk if unloaded and `options.load` is `true` or `undefined`.
+   *
    * @param documentPath file path pointing to the document
+   * @param options
    * @returns the document, or `undefined` if no such document exists
    */
-  public getDocument(documentPath: string): ModelicaDocument | undefined {
+  public async getDocument(documentPath: string, options?: GetDocumentOptions): Promise<ModelicaDocument | undefined> {
+    let loadedDocument: ModelicaDocument | undefined = undefined;
     for (const library of this.#libraries) {
-      const doc = library.documents.get(documentPath);
-      if (doc) {
-        logger.debug(`Found document: ${doc.path}`);
-        return doc;
+      loadedDocument = library.documents.get(documentPath);
+      if (loadedDocument) {
+        logger.debug(`Found document: ${documentPath}`);
+        break;
+      }
+    }
+
+    if (loadedDocument) {
+      return loadedDocument;
+    }
+
+    if (options?.load !== false) {
+      const newDocument = await this.addDocument(documentPath);
+      if (newDocument) {
+        return newDocument;
       }
     }
 
@@ -84,10 +109,10 @@ export class ModelicaProject {
    * same document has no effect.
    *
    * @param documentPath path to the document
-   * @returns `true` if the document was just added, `false` if it was already added
+   * @returns the document, or undefined if it wasn't added
    * @throws if the document does not belong to a library
    */
-  public async addDocument(documentPath: string): Promise<boolean> {
+  public async addDocument(documentPath: string): Promise<ModelicaDocument | undefined> {
     logger.info(`Adding document at '${documentPath}'...`);
 
     for (const library of this.#libraries) {
@@ -101,36 +126,45 @@ export class ModelicaProject {
 
       if (library.documents.get(documentPath) !== undefined) {
         logger.warn(`Document '${documentPath}' already in library '${library.name}'; ignoring...`);
-        return false;
+        return undefined;
       }
 
-      const document = await ModelicaDocument.load(library, documentPath);
+      const document = await ModelicaDocument.load(this, library, documentPath);
       library.documents.set(documentPath, document);
       logger.debug(`Added document: ${documentPath}`);
-      return true;
+      return document;
     }
 
-    throw new Error(`Failed to add document '${documentPath}': not a part of any libraries.`);
+    // If the document doesn't belong to a library, it could still be loaded
+    // as a standalone document if it has an empty or non-existent within clause
+    const document = await ModelicaDocument.load(this, null, documentPath);
+    if (document.within.length === 0) {
+      logger.debug(`Added document: ${documentPath}`);
+      return document;
+    }
+
+    logger.debug(`Failed to add document '${documentPath}': not a part of any libraries.`);
+    return undefined;
   }
 
   /**
    * Updates the content and tree of the given document. Does nothing and
-   * returns `false` if the document was not loaded yet.
+   * returns `false` if the document was not found.
    *
    * @param documentPath path to the document
    * @param text the modification
    * @returns if the document was updated
    */
-  public updateDocument(documentPath: string, text: string): boolean {
+  public async updateDocument(documentPath: string, text: string): Promise<boolean> {
     logger.debug(`Updating document at '${documentPath}'...`);
 
-    const doc = this.getDocument(documentPath);
+    const doc = await this.getDocument(documentPath, { load: true });
     if (doc) {
       doc.update(text);
       logger.debug(`Updated document '${documentPath}'`);
       return true;
     } else {
-      logger.warn(`Failed to update document '${documentPath}': not loaded`);
+      logger.warn(`Failed to update document '${documentPath}': not found`);
       return false;
     }
   }
@@ -141,15 +175,15 @@ export class ModelicaProject {
    * @param documentPath path to the document
    * @returns if the document was removed
    */
-  public removeDocument(documentPath: string): boolean {
+  public async removeDocument(documentPath: string): Promise<boolean> {
     logger.info(`Removing document at '${documentPath}'...`);
 
-    const doc = this.getDocument(documentPath);
+    const doc = await this.getDocument(documentPath, { load: false });
     if (doc) {
-      doc.library.documents.delete(documentPath);
+      doc.library?.documents.delete(documentPath);
       return true;
     } else {
-      logger.warn(`Failed to remove document '${documentPath}': not loaded`);
+      logger.warn(`Failed to remove document '${documentPath}': not found`);
       return false;
     }
   }

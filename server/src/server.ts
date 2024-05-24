@@ -150,7 +150,7 @@ export class ModelicaServer {
   private async onDidChangeTextDocument(params: LSP.DidChangeTextDocumentParams): Promise<void> {
     logger.debug('onDidChangeTextDocument');
     for (const change of params.contentChanges) {
-      this.#analyzer.updateDocument(params.textDocument.uri, change.text);
+      await this.#analyzer.updateDocument(params.textDocument.uri, change.text);
     }
   }
 
@@ -166,7 +166,7 @@ export class ModelicaServer {
           // TODO: incremental?
           const path = url.fileURLToPath(change.uri);
           const content = await fs.readFile(path, 'utf-8');
-          this.#analyzer.updateDocument(change.uri, content);
+          await this.#analyzer.updateDocument(change.uri, content);
           break;
         }
         case LSP.FileChangeType.Deleted: {
@@ -183,7 +183,7 @@ export class ModelicaServer {
    * @param params  Unused.
    * @returns       Symbol information.
    */
-  private onDocumentSymbol(params: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
+  private async onDocumentSymbol(params: LSP.DocumentSymbolParams): Promise<LSP.SymbolInformation[]> {
     // TODO: ideally this should return LSP.DocumentSymbol[] instead of LSP.SymbolInformation[]
     // which is a hierarchy of symbols.
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol

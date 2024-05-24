@@ -37,7 +37,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import * as LSP from 'vscode-languageserver/node';
 import Parser from 'web-tree-sitter';
 import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
+import * as TreeSitterUtil from '../util/tree-sitter';
 
 import { pathToUri, uriToPath } from '../util';
 import { logger } from '../util/logger';
@@ -45,11 +45,13 @@ import { ModelicaLibrary } from './library';
 import { ModelicaProject } from './project';
 
 export class ModelicaDocument implements TextDocument {
-  readonly #library: ModelicaLibrary;
+  readonly #project: ModelicaProject;
+  readonly #library: ModelicaLibrary | null;
   readonly #document: TextDocument;
   #tree: Parser.Tree;
 
-  public constructor(library: ModelicaLibrary, document: TextDocument, tree: Parser.Tree) {
+  public constructor(project: ModelicaProject, library: ModelicaLibrary | null, document: TextDocument, tree: Parser.Tree) {
+    this.#project = project;
     this.#library = library;
     this.#document = document;
     this.#tree = tree;
@@ -58,12 +60,14 @@ export class ModelicaDocument implements TextDocument {
   /**
    * Loads a document.
    *
-   * @param library the containing {@link ModelicaLibrary}
+   * @param project the {@link ModelicaProject}
+   * @param library the containing {@link ModelicaLibrary} (or `null` if not a part of one)
    * @param documentPath the path to the document
    * @returns the document
    */
   public static async load(
-    library: ModelicaLibrary,
+    project: ModelicaProject,
+    library: ModelicaLibrary | null,
     documentPath: string,
   ): Promise<ModelicaDocument> {
     logger.debug(`Loading document at '${documentPath}'...`);
@@ -76,9 +80,9 @@ export class ModelicaDocument implements TextDocument {
 
       // On caching: see issue https://github.com/tree-sitter/tree-sitter/issues/824
       // TL;DR: it's faster to re-parse the content than it is to deserialize the cached tree.
-      const tree = library.project.parser.parse(content);
+      const tree = project.parser.parse(content);
 
-      return new ModelicaDocument(library, document, tree);
+      return new ModelicaDocument(project, library, document, tree);
     } catch (err) {
       throw new Error(
         `Failed to load document at '${documentPath}': ${err instanceof Error ? err.message : err}`,
@@ -129,40 +133,40 @@ export class ModelicaDocument implements TextDocument {
   }
 
   /**
-   * The fully-qualified name of the class declared by this file. For instance,
-   * for a file named `MyLibrary/MyPackage/MyClass.mo`, this would be
-   * `["MyLibrary", "MyPackage", "MyClass"]`.
-   */
-  public get packagePath(): string[] {
-    const directories = path.relative(this.#library.path, this.path).split(path.sep);
-    const fileName = directories.pop()!;
-
-    const packagePath: string[] = [this.#library.name, ...directories];
-    if (fileName !== 'package.mo') {
-      packagePath.push(fileName.slice(0, fileName.length - '.mo'.length));
-    }
-
-    return packagePath;
-  }
-
-  /**
    * The enclosing package of the class declared by this file. For instance, for
-   * a file named `MyLibrary/MyPackage/MyClass.mo`, this would be `["MyLibrary",
+   * a file named `MyLibrary/MyPackage/MyClass.mo`, this should be `["MyLibrary",
    * "MyPackage"]`.
-   *
-   * Note: this property should be the same thing as the `within` clause
-   * declared in the document. However, we don't actually check the clause at
-   * all. The `within` clause is entirely redundant and completely ignored.
    */
   public get within(): string[] {
-    return this.packagePath.slice(0, -1);
+    const withinClause = this.#tree.rootNode.children
+      .find((node) => node.type === 'within_clause')
+      ?.childForFieldName("name");
+    if (!withinClause) {
+      return [];
+    }
+
+    // TODO: Use a helper function from TreeSitterUtil
+    const identifiers: string[] = [];
+    TreeSitterUtil.forEach(withinClause, (node) => {
+      if (node.type === "name") {
+        return true;
+      }
+
+      if (node.type === "IDENT") {
+        identifiers.push(node.text);
+      }
+
+      return false;
+    });
+
+    return identifiers;
   }
 
   public get project(): ModelicaProject {
-    return this.#library.project;
+    return this.#project;
   }
 
-  public get library(): ModelicaLibrary {
+  public get library(): ModelicaLibrary | null {
     return this.#library;
   }
 
