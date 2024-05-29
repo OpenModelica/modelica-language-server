@@ -101,6 +101,25 @@ describe('ModelicaDocument', () => {
     );
 
     assert.equal(document.getText().trim(), UPDATED_TEST_PACKAGE_CONTENT.trim());
+
+    document.update(
+      '\n  model A\n  end A;',
+      {
+        start: {
+          line: 1,
+          character: 30,
+        },
+        end: {
+          line: 1,
+          character: 30,
+        },
+      }
+    );
+
+    const model = document.tree.rootNode.descendantsOfType("class_definition")[1];
+    assert.equal(model.type, "class_definition");
+    assert.equal(model.descendantsOfType("IDENT")[0].text, "A");
+    assert.equal(document.tree.rootNode.descendantsOfType("annotation_clause").length, 1);
   });
 
   it('a file with no `within` clause has the correct package path', () => {
