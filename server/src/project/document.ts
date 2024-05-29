@@ -78,8 +78,6 @@ export class ModelicaDocument implements TextDocument {
       const uri = pathToUri(documentPath);
       const document = TextDocument.create(uri, 'modelica', 0, content);
 
-      // On caching: see issue https://github.com/tree-sitter/tree-sitter/issues/824
-      // TL;DR: it's faster to re-parse the content than it is to deserialize the cached tree.
       const tree = project.parser.parse(content);
 
       return new ModelicaDocument(project, library, document, tree);
