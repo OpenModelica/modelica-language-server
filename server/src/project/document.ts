@@ -39,10 +39,11 @@ import Parser from 'web-tree-sitter';
 import * as fs from 'node:fs/promises';
 import * as TreeSitterUtil from '../util/tree-sitter';
 
-import { pathToUri, uriToPath } from '../util';
 import { logger } from '../util/logger';
 import { ModelicaLibrary } from './library';
 import { ModelicaProject } from './project';
+import { positionToPoint } from '../util/tree-sitter';
+import { pathToUri, uriToPath } from '../util';
 
 export class ModelicaDocument implements TextDocument {
   readonly #project: ModelicaProject;
@@ -50,7 +51,12 @@ export class ModelicaDocument implements TextDocument {
   readonly #document: TextDocument;
   #tree: Parser.Tree;
 
-  public constructor(project: ModelicaProject, library: ModelicaLibrary | null, document: TextDocument, tree: Parser.Tree) {
+  public constructor(
+    project: ModelicaProject,
+    library: ModelicaLibrary | null,
+    document: TextDocument,
+    tree: Parser.Tree,
+  ) {
     this.#project = project;
     this.#library = library;
     this.#document = document;
@@ -90,12 +96,54 @@ export class ModelicaDocument implements TextDocument {
 
   /**
    * Updates a document.
+   *
    * @param text the modification
+   * @param range the range to update, or `undefined` to replace the whole file
    */
-  public async update(text: string): Promise<void> {
-    TextDocument.update(this.#document, [{ text }], this.version + 1);
-    this.#tree = this.project.parser.parse(text);
-    return;
+  public async update(text: string, range?: LSP.Range): Promise<void> {
+    if (range === undefined) {
+      TextDocument.update(this.#document, [{ text }], this.version + 1);
+      this.#tree = this.project.parser.parse(text);
+      return;
+    }
+
+    const startIndex = this.offsetAt(range.start);
+    const startPosition = positionToPoint(range.start);
+    const oldEndIndex = this.offsetAt(range.end);
+    const oldEndPosition = positionToPoint(range.end);
+    const newEndIndex = startIndex + text.length;
+
+    TextDocument.update(this.#document, [{ text, range }], this.version + 1);
+    const newEndPosition = positionToPoint(this.positionAt(newEndIndex));
+
+    this.#tree.edit({
+      startIndex,
+      startPosition,
+      oldEndIndex,
+      oldEndPosition,
+      newEndIndex,
+      newEndPosition,
+    });
+
+    this.#tree = this.project.parser.parse((index: number, position?: Parser.Point) => {
+      if (position) {
+        return this.getText({
+          start: {
+            character: position.column,
+            line: position.row,
+          },
+          end: {
+            character: position.column + 1,
+            line: position.row,
+          },
+        });
+      } else {
+        return this.getText({
+          start: this.positionAt(index),
+          end: this.positionAt(index + 1),
+        });
+      }
+    }, this.#tree);
   }
 
   public getText(range?: LSP.Range | undefined): string {
@@ -138,7 +186,7 @@ export class ModelicaDocument implements TextDocument {
   public get within(): string[] {
     const withinClause = this.#tree.rootNode.children
       .find((node) => node.type === 'within_clause')
-      ?.childForFieldName("name");
+      ?.childForFieldName('name');
     if (!withinClause) {
       return [];
     }
@@ -146,11 +194,11 @@ export class ModelicaDocument implements TextDocument {
     // TODO: Use a helper function from TreeSitterUtil
     const identifiers: string[] = [];
     TreeSitterUtil.forEach(withinClause, (node) => {
-      if (node.type === "name") {
+      if (node.type === 'name') {
         return true;
       }
 
-      if (node.type === "IDENT") {
+      if (node.type === 'IDENT') {
         identifiers.push(node.text);
       }
 
