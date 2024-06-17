@@ -21,6 +21,8 @@ export abstract class BaseUnresolvedReference {
   }
 
   public abstract isAbsolute(): this is UnresolvedAbsoluteReference;
+
+  public abstract equals(other: unknown): boolean;
 }
 
 export class UnresolvedRelativeReference extends BaseUnresolvedReference {
@@ -49,6 +51,20 @@ export class UnresolvedRelativeReference extends BaseUnresolvedReference {
     return false;
   }
 
+  public equals(other: unknown): boolean {
+    if (!(other instanceof UnresolvedRelativeReference)) {
+      return false;
+    }
+
+    return (
+      this.document.uri === other.document.uri &&
+      this.node.equals(other.node) &&
+      this.symbols.length === other.symbols.length &&
+      this.symbols.every((s, i) => s === other.symbols[i]) &&
+      this.kind === other.kind
+    );
+  }
+
   public toString(): string {
     const start = this.node.startPosition;
     return (
@@ -69,6 +85,18 @@ export class UnresolvedAbsoluteReference extends BaseUnresolvedReference {
 
   public isAbsolute(): this is UnresolvedAbsoluteReference {
     return true;
+  }
+
+  public equals(other: unknown): boolean {
+    if (!(other instanceof UnresolvedAbsoluteReference)) {
+      return false;
+    }
+
+    return (
+      this.symbols.length === other.symbols.length &&
+      this.symbols.every((s, i) => s === other.symbols[i]) &&
+      this.kind === other.kind
+    );
   }
 
   public toString(): string {
@@ -121,6 +149,20 @@ export class ResolvedReference {
     this.node = node;
     this.symbols = symbols;
     this.kind = kind;
+  }
+
+  public equals(other: unknown): boolean {
+    if (!(other instanceof ResolvedReference)) {
+      return false;
+    }
+
+    return (
+      this.document.uri === other.document.uri &&
+      this.node.equals(other.node) &&
+      this.symbols.length === other.symbols.length &&
+      this.symbols.every((s, i) => s === other.symbols[i]) &&
+      this.kind === other.kind
+    );
   }
 
   public toString(): string {

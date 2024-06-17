@@ -53,7 +53,7 @@
     "test:e2e": "run-script-os",
     "test:e2e:win32": "npm run test-compile && powershell -File ./scripts/e2e.ps1",
     "test:e2e:default": "npm run test-compile && sh ./scripts/e2e.sh",
-    "test:server": "cd server && npx mocha -r ts-node/register src/test/**/*.test.ts src/project/test/**/*.test.ts src/util/test/**/*.test.ts",
+    "test:server": "cd server && npx mocha -r ts-node/register src/test/**/*.test.ts src/project/test/**/*.test.ts src/util/test/**/*.test.ts src/analysis/test/**/*.test.ts",
     "all": "npm run postinstall && npm run esbuild && npm run lint && npm run test:server && npm run test:e2e && npm run vscode:prepublish"
   },
   "devDependencies": {

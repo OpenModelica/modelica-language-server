@@ -44,12 +44,12 @@ import { logger } from '../util/logger';
 
 /** Options for {@link ModelicaProject.getDocument} */
 export interface GetDocumentOptions {
-    /**
-     * `true` to try loading the document from disk if it is not already loaded.
-     *
-     * Default value: `true`.
-     */
-    load?: boolean,
+  /**
+   * `true` to try loading the document from disk if it is not already loaded.
+   *
+   * Default value: `true`.
+   */
+  load?: boolean;
 }
 
 export class ModelicaProject {
@@ -78,7 +78,10 @@ export class ModelicaProject {
    * @param options
    * @returns the document, or `undefined` if no such document exists
    */
-  public async getDocument(documentPath: string, options?: GetDocumentOptions): Promise<ModelicaDocument | undefined> {
+  public async getDocument(
+    documentPath: string,
+    options?: GetDocumentOptions,
+  ): Promise<ModelicaDocument | undefined> {
     let loadedDocument: ModelicaDocument | undefined = undefined;
     for (const library of this.#libraries) {
       loadedDocument = library.documents.get(documentPath);
@@ -137,8 +140,16 @@ export class ModelicaProject {
 
     // If the document doesn't belong to a library, it could still be loaded
     // as a standalone document if it has an empty or non-existent within clause
-    const document = await ModelicaDocument.load(this, null, documentPath);
+    const standaloneName = path.basename(documentPath).split('.')[0];
+    const standaloneLibrary = new ModelicaLibrary(
+      this,
+      path.dirname(documentPath),
+      false,
+      standaloneName,
+    );
+    const document = await ModelicaDocument.load(this, standaloneLibrary, documentPath);
     if (document.within.length === 0) {
+      this.addLibrary(standaloneLibrary);
       logger.debug(`Added document: ${documentPath}`);
       return document;
     }
@@ -155,7 +166,11 @@ export class ModelicaProject {
    * @param text the modification
    * @returns if the document was updated
    */
-  public async updateDocument(documentPath: string, text: string, range?: LSP.Range): Promise<boolean> {
+  public async updateDocument(
+    documentPath: string,
+    text: string,
+    range?: LSP.Range,
+  ): Promise<boolean> {
     logger.debug(`Updating document at '${documentPath}'...`);
 
     const doc = await this.getDocument(documentPath, { load: true });

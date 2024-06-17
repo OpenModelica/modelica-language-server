@@ -405,6 +405,7 @@ function resolveAbsoluteReference(
 
   logger.debug(`Resolving ${reference}`);
 
+  logger.debug(project.libraries.map((x) => x.name + ' | ' + x.path).join('\n\t'));
   const library = project.libraries.find((lib) => lib.name === reference.symbols[0]);
   if (library == null) {
     logger.debug(`Couldn't find library: ${reference.symbols[0]}`);
@@ -453,7 +454,11 @@ function resolveNext(
 ): ResolvedReference | null {
   // If at the root level, find the root package
   if (!parentReference) {
-    const documentPath = path.join(library.path, 'package.mo');
+    let documentPath = path.join(library.path, 'package.mo');
+    if (!fs.existsSync(documentPath)) {
+      documentPath = path.join(library.path, library.name + '.mo');
+    }
+
     const [document, packageClass] = getPackageClassFromFilePath(library, documentPath, nextSymbol);
     if (!document || !packageClass) {
       logger.debug(`Couldn't find package class: ${nextSymbol} in ${documentPath}`);
