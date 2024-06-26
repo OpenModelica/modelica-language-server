@@ -19,7 +19,7 @@
     "language-server"
   ],
   "homepage": "https://github.com/OpenModelica/modelica-language-server",
-  "icon": "images/Modelica_Language_marging.jpg",
+  "icon": "images/Modelica_Language_margin.jpg",
   "bugs": "https://github.com/OpenModelica/modelica-language-server/issues",
   "engines": {
     "vscode": "^1.75.0"

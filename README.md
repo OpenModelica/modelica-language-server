@@ -18,6 +18,10 @@ features:
 
     ![Outline](images/outline_demo.png)
 
+  - Goto declarations.
+
+    ![Goto Declaration](images/goto_declaration_demo.png)
+
 ## Installation
 
 ### Via Marketplace

@@ -66,7 +66,7 @@ describe('resolveReference', () => {
     const resolvedDocument = await project.getDocument(TEST_CLASS_PATH);
     assert(resolvedDocument !== undefined);
 
-    // Get node declarting `TestClass`
+    // Get node declaring `TestClass`
     const resolvedNode = TreeSitterUtil.findFirst(
       resolvedDocument.tree.rootNode,
       (node) =>

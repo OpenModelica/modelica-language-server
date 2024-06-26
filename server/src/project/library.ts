@@ -58,7 +58,8 @@ export class ModelicaLibrary {
     this.#project = project;
     (this.#path = libraryPath), (this.#documents = new Map());
     this.#isWorkspace = isWorkspace;
-    this.#name = name ?? path.basename(this.path);
+    // Path basename could contain version seperated by whitespace
+    this.#name = name ?? path.basename(this.path).split(/\s/)[0];
   }
 
   /**
