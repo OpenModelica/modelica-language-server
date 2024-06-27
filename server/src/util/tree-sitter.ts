@@ -44,6 +44,7 @@ import * as LSP from 'vscode-languageserver/node';
 import { SyntaxNode } from 'web-tree-sitter';
 
 import { logger } from './logger';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
 /**
  * Recursively iterate over all nodes in a tree.
@@ -128,6 +129,41 @@ export function isDefinition(n: SyntaxNode): boolean {
   }
 }
 
+/**
+ * Tell if a node is a variable declaration.
+ *
+ * @param n Node of tree
+ * @returns `true` if node is a variable declaration, `false` otherwise.
+ */
+export function isVariableDeclaration(n: SyntaxNode): boolean {
+  switch (n.type) {
+    case 'component_clause':
+    case 'component_redeclaration':
+      return true;
+    case 'named_element':
+      return n.childForFieldName('classDefinition') == null;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Tell if a node is an element list.
+ *
+ * @param n Node of tree
+ * @returns `true` if node is an element list, `false` otherwise.
+ */
+export function isElementList(n: SyntaxNode): boolean {
+  switch (n.type) {
+    case 'element_list':
+    case 'public_element_list':
+    case 'protected_element_list':
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function findParent(
   start: SyntaxNode,
   predicate: (n: SyntaxNode) => boolean,
@@ -150,6 +186,176 @@ export function findParent(
 export function getIdentifier(start: SyntaxNode): string | undefined {
   const node = findFirst(start, (n: SyntaxNode) => n.type == 'IDENT');
   return node?.text;
+}
+
+/**
+ * Returns the identifier(s) declared by the given node, or `[]` if no
+ * identifiers are declared.
+ *
+ * Note: this does not return any identifiers that are declared "inside" of the
+ * node. For instance, calling `getDeclaredIdentifiers` on a class_definition
+ * will only return the name of the class.
+ *
+ * @param node The node to check. Must be a declaration.
+ * @returns The identifiers.
+ */
+export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
+  if (node == null) {
+    throw new Error('getDeclaredIdentifiers called with null/undefined node');
+  }
+
+  // TODO: does this support all desired node types? Are we considering too many nodes?
+  switch (node.type) {
+    case 'declaration':
+    case 'derivative_class_specifier':
+    case 'enumeration_class_specifier':
+    case 'extends_class_specifier':
+    case 'long_class_specifier':
+    case 'short_class_specifier':
+    case 'enumeration_literal':
+    case 'for_index':
+      return [node.childForFieldName('identifier')!.text];
+    case 'stored_definitions':
+    case 'component_list':
+    case 'enum_list':
+    case 'element_list':
+    case 'public_element_list':
+    case 'protected_element_list':
+    case 'for_indices':
+      return node.namedChildren.flatMap(getDeclaredIdentifiers);
+    case 'component_clause':
+      return getDeclaredIdentifiers(node.childForFieldName('componentDeclarations')!);
+    case 'component_declaration':
+      return getDeclaredIdentifiers(node.childForFieldName('declaration')!);
+    case 'component_redeclaration':
+      return getDeclaredIdentifiers(node.childForFieldName('componentClause')!);
+    case 'stored_definition':
+      return getDeclaredIdentifiers(node.childForFieldName('classDefinition')!);
+    case 'class_definition':
+      return getDeclaredIdentifiers(node.childForFieldName('classSpecifier')!);
+    case 'for_equation':
+    case 'for_statement':
+      return getDeclaredIdentifiers(node.childForFieldName('indices')!);
+    case 'named_element': {
+      const definition =
+        node.childForFieldName('classDefinition') ?? node.childForFieldName('componentClause')!;
+      return getDeclaredIdentifiers(definition);
+    }
+    default:
+      return [];
+  }
+}
+
+export function hasIdentifier(node: SyntaxNode | null, identifier: string): boolean {
+  if (!node) {
+    return false;
+  }
+
+  return getDeclaredIdentifiers(node).includes(identifier);
+}
+
+export interface TypeSpecifier {
+  isGlobal: boolean;
+  symbols: string[];
+  symbolNodes: SyntaxNode[];
+}
+
+export function getTypeSpecifier(node: SyntaxNode): TypeSpecifier {
+  switch (node.type) {
+    case 'type_specifier': {
+      const isGlobal = node.childForFieldName('global') !== null;
+      const name = node.childForFieldName('name')!;
+      const symbolNodes = getNameIdentifiers(name);
+      return {
+        isGlobal,
+        symbols: symbolNodes.map((id) => id.text),
+        symbolNodes,
+      };
+    }
+    case 'name': {
+      const symbolNodes = getNameIdentifiers(node);
+      return {
+        isGlobal: false,
+        symbols: symbolNodes.map((id) => id.text),
+        symbolNodes,
+      };
+    }
+    case 'IDENT':
+      return {
+        isGlobal: false,
+        symbols: [node.text],
+        symbolNodes: [node],
+      };
+    default: {
+      const typeSpecifier = findFirst(node, (child) => child.type === 'type_specifier');
+      if (typeSpecifier) {
+        return getTypeSpecifier(typeSpecifier);
+      }
+
+      const name = findFirst(node, (child) => child.type === 'name');
+      if (name) {
+        return getTypeSpecifier(name);
+      }
+
+      throw new Error('Syntax node does not contain a type_specifier or name');
+    }
+  }
+}
+
+// TODO: this does not handle indexing arrays
+export interface ComponentReference {
+  isGlobal: boolean;
+  components: string[];
+  componentNodes: SyntaxNode[];
+}
+
+export function getComponentReference(node: SyntaxNode): ComponentReference {
+  switch (node.type) {
+    case 'component_reference': {
+      const isGlobal = node.childForFieldName('global') !== null;
+      const componentNodes = getNameIdentifiers(node);
+
+      return {
+        isGlobal,
+        components: componentNodes.map((id) => id.text),
+        componentNodes,
+      };
+    }
+    case 'IDENT':
+      return {
+        isGlobal: false,
+        components: [node.text],
+        componentNodes: [node],
+      };
+    default: {
+      const componentRef = findFirst(node, (child) => child.type === 'component_reference');
+      if (componentRef) {
+        return getComponentReference(componentRef);
+      }
+
+      throw new Error('Syntax node does not contain a component_reference');
+    }
+  }
+}
+
+/**
+ * Converts a name `SyntaxNode` into an array of the `IDENT`s in that node.
+ */
+function getNameIdentifiers(nameNode: SyntaxNode): Parser.SyntaxNode[] {
+  if (nameNode.type !== 'name' && nameNode.type !== 'component_reference') {
+    throw new Error(
+      `Expected a 'name' or 'component_reference' node; got '${nameNode.type}' (${nameNode.text})`,
+    );
+  }
+
+  const identNode = nameNode.childForFieldName('identifier')!;
+  const qualifierNode = nameNode.childForFieldName('qualifier');
+  if (qualifierNode) {
+    const qualifier = getNameIdentifiers(qualifierNode);
+    return [...qualifier, identNode];
+  } else {
+    return [identNode];
+  }
 }
 
 /**
@@ -177,4 +383,30 @@ export function positionToPoint(position: LSP.Position): Parser.Point {
 
 export function pointToPosition(point: Parser.Point): LSP.Position {
   return { line: point.row, character: point.column };
+}
+
+export function createLocationLink(
+  document: TextDocument,
+  node: Parser.SyntaxNode,
+): LSP.LocationLink;
+export function createLocationLink(
+  documentUri: LSP.DocumentUri,
+  node: Parser.SyntaxNode,
+): LSP.LocationLink;
+export function createLocationLink(
+  document: TextDocument | LSP.DocumentUri,
+  node: Parser.SyntaxNode,
+): LSP.LocationLink {
+  // TODO: properly set targetSelectionRange (e.g. the name of a function or variable).
+  return {
+    targetUri: typeof document === 'string' ? document : document.uri,
+    targetRange: {
+      start: pointToPosition(node.startPosition),
+      end: pointToPosition(node.endPosition),
+    },
+    targetSelectionRange: {
+      start: pointToPosition(node.startPosition),
+      end: pointToPosition(node.endPosition),
+    },
+  };
 }

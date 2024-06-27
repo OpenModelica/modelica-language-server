@@ -39,7 +39,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { initializeParser } from '../../parser';
 
-const TEST_LIBRARY_PATH = path.join(__dirname, 'TestLibrary');
+const TEST_LIBRARY_PATH = path.join(__dirname, 'TestLibrary 1.0.0');
 const TEST_PACKAGE_PATH = path.join(TEST_LIBRARY_PATH, 'package.mo');
 const TEST_CLASS_PATH = path.join(TEST_LIBRARY_PATH, 'HalfAdder.mo');
 
@@ -81,6 +81,7 @@ describe('ModelicaProject', () => {
     it('should add the library', () => {
       assert.equal(project.libraries.length, 1);
       assert.equal(project.libraries[0], library);
+      assert.equal(project.libraries[0].name, "TestLibrary")
     });
 
     it('should add all the documents in the library', async () => {

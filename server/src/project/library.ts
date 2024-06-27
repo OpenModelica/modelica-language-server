@@ -33,26 +33,33 @@
  *
  */
 
-import * as LSP from "vscode-languageserver";
-import * as fsWalk from "@nodelib/fs.walk";
-import * as path from "node:path";
-import * as util from "node:util";
+import * as LSP from 'vscode-languageserver';
+import * as fsWalk from '@nodelib/fs.walk';
+import * as path from 'node:path';
+import * as util from 'node:util';
 
 import { logger } from '../util/logger';
-import { ModelicaDocument } from "./document";
-import { ModelicaProject } from "./project";
+import { ModelicaDocument } from './document';
+import { ModelicaProject } from './project';
 
 export class ModelicaLibrary {
   readonly #project: ModelicaProject;
   readonly #documents: Map<string, ModelicaDocument>;
   readonly #isWorkspace: boolean;
+  readonly #name: string;
   #path: string;
 
-  public constructor(project: ModelicaProject, libraryPath: string, isWorkspace: boolean) {
+  public constructor(
+    project: ModelicaProject,
+    libraryPath: string,
+    isWorkspace: boolean,
+    name?: string,
+  ) {
     this.#project = project;
-    this.#path = libraryPath,
-    this.#documents = new Map();
+    (this.#path = libraryPath), (this.#documents = new Map());
     this.#isWorkspace = isWorkspace;
+    // Path basename could contain version seperated by whitespace
+    this.#name = name ?? path.basename(this.path).split(/\s/)[0];
   }
 
   /**
@@ -71,7 +78,11 @@ export class ModelicaLibrary {
     logger.info(`Loading ${isWorkspace ? 'workspace' : 'library'} at '${libraryPath}'...`);
 
     const library = new ModelicaLibrary(project, libraryPath, isWorkspace);
-    const workspaceRootDocument = await ModelicaDocument.load(project, library, path.join(libraryPath, 'package.mo'));
+    const workspaceRootDocument = await ModelicaDocument.load(
+      project,
+      library,
+      path.join(libraryPath, 'package.mo'),
+    );
 
     // Find the root path of the library and update library.#path.
     // It might have been set incorrectly if we opened a child folder.
@@ -96,7 +107,7 @@ export class ModelicaLibrary {
   }
 
   public get name(): string {
-    return path.basename(this.path);
+    return this.#name;
   }
 
   public get path(): string {

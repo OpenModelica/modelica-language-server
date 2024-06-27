@@ -97,6 +97,8 @@ export class ModelicaServer {
   public capabilities(): LSP.ServerCapabilities {
     return {
       completionProvider: undefined,
+      declarationProvider: true,
+      definitionProvider: true,
       hoverProvider: false,
       signatureHelpProvider: undefined,
       documentSymbolProvider: true,
@@ -121,6 +123,8 @@ export class ModelicaServer {
     connection.onShutdown(this.onShutdown.bind(this));
     connection.onDidChangeTextDocument(this.onDidChangeTextDocument.bind(this));
     connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
+    connection.onDeclaration(this.onDeclaration.bind(this));
+    connection.onDefinition(this.onDefinition.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
   }
 
@@ -178,13 +182,81 @@ export class ModelicaServer {
     }
   }
 
+  // TODO: We currently treat goto declaration and goto definition the same,
+  //       but there are probably some differences we need to handle.
+  //
+  // 1. inner/outer variables. Modelica allows the user to redeclare variables
+  //    from enclosing classes to use them in inner classes. Goto Declaration
+  //    should go to whichever declaration is in scope, while Goto Definition
+  //    should go to the `outer` declaration. In the following example:
+  //
+  //        model Outer
+  //          model Inner
+  //            inner Real shared;
+  //          equation
+  //            shared = ...;             (A)
+  //          end Inner;
+  //          outer Real shared = 0;
+  //        equation
+  //          shared = ...;               (B)
+  //        end Outer;
+  //
+  //   +-----+-------------+------------+
+  //   | Ref | Declaration | Definition |
+  //   +-----+-------------+------------+
+  //   |  A  |    inner    |   outer    |
+  //   |  B  |    outer    |   outer    |
+  //   +-----+-------------+------------+
+  //
+  // 2. extends_clause is weird. This is a valid class:
+  //
+  //        class extends Foo;
+  //        end Foo;
+  //
+  //    What does this even mean? Is this a definition of Foo or a redeclaration of Foo?
+  //
+  // 3. Import aliases. Should this be considered to be a declaration of `Frobnicator`?
+  //
+  //        import Frobnicator = Foo.Bar.Baz;
+  //
+
+  private async onDeclaration(params: LSP.DeclarationParams): Promise<LSP.LocationLink[]> {
+    logger.debug('onDeclaration');
+
+    const locationLink = await this.#analyzer.findDeclaration(
+      params.textDocument.uri,
+      params.position,
+    );
+    if (locationLink == null) {
+      return [];
+    }
+
+    return [locationLink];
+  }
+
+  private async onDefinition(params: LSP.DefinitionParams): Promise<LSP.LocationLink[]> {
+    logger.debug('onDefinition');
+
+    const locationLink = await this.#analyzer.findDeclaration(
+      params.textDocument.uri,
+      params.position,
+    );
+    if (locationLink == null) {
+      return [];
+    }
+
+    return [locationLink];
+  }
+
   /**
    * Provide symbols defined in document.
    *
    * @param params  Unused.
    * @returns       Symbol information.
    */
-  private async onDocumentSymbol(params: LSP.DocumentSymbolParams): Promise<LSP.SymbolInformation[]> {
+  private async onDocumentSymbol(
+    params: LSP.DocumentSymbolParams,
+  ): Promise<LSP.SymbolInformation[]> {
     // TODO: ideally this should return LSP.DocumentSymbol[] instead of LSP.SymbolInformation[]
     // which is a hierarchy of symbols.
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
