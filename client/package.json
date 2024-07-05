@@ -1,9 +1,9 @@
 {
   "name": "modelica-language-server-client",
   "description": "VSCode part of a language server",
-  "author": "Andreas Heuermann",
+  "author": "Andreas Heuermann, Osman Karabel, Evan Hedbor, PaddiM8",
   "license": "OSMC-PL-1-8",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "vscode",
   "repository": {
     "type": "git",

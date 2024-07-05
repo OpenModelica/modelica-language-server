@@ -81,7 +81,7 @@ describe('ModelicaProject', () => {
     it('should add the library', () => {
       assert.equal(project.libraries.length, 1);
       assert.equal(project.libraries[0], library);
-      assert.equal(project.libraries[0].name, "TestLibrary")
+      assert.equal(project.libraries[0].name, "TestLibrary");
     });
 
     it('should add all the documents in the library', async () => {
