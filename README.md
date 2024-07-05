@@ -26,12 +26,13 @@ features:
 
 ### Via Marketplace
 
-`OpenModelica.modelica-language-server` is not yet listed on the marketplace.
+  - [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=OpenModelica.modelica-language-server)
+  - [Open VSX Registry](https://open-vsx.org/extension/OpenModelica/modelica-language-server)
 
 ### Via VSIX File
 
 Download the latest
-[modelica-language-server-0.1.0.vsix](https://github.com/OpenModelica/modelica-language-server/releases/download/v0.1.0/modelica-language-server-0.1.0.vsix)
+[modelica-language-server-0.2.0.vsix](https://github.com/OpenModelica/modelica-language-server/releases/download/v0.2.0/modelica-language-server-0.2.0.vsix)
 from the
 [releases](https://github.com/OpenModelica/modelica-language-server/releases)
 page.
@@ -41,7 +42,7 @@ on how to install a .vsix file.
 Use the `Install from VSIX` command or run
 
 ```bash
-code --install-extension modelica-language-server-0.1.0.vsix
+code --install-extension modelica-language-server-0.2.0.vsix
 ```
 
 ## Contributing ❤️
