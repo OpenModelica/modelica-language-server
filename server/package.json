@@ -13,6 +13,7 @@
     "url": "https://github.com/OpenModelica/modelica-language-server"
   },
   "dependencies": {
+    "@nodelib/fs.walk": "^3.0.1",
     "tree-sitter": "^0.21.1",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",

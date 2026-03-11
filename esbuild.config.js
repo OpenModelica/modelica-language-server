@@ -36,4 +36,4 @@ if (!fs.existsSync('out')) {
   fs.mkdirSync('out');
 }
 fs.copyFileSync('./server/src/tree-sitter-modelica.wasm', './out/tree-sitter-modelica.wasm');
-fs.copyFileSync('./server/node_modules/web-tree-sitter/tree-sitter.wasm', './out/tree-sitter.wasm');
+fs.copyFileSync('./server/node_modules/web-tree-sitter/web-tree-sitter.wasm', './out/tree-sitter.wasm');
