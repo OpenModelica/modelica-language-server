@@ -55,7 +55,7 @@ const expectedTypes = [LSP.SymbolKind.Class, LSP.SymbolKind.Function, LSP.Symbol
 describe('nodeToSymbolInformation', () => {
   it('type to TypeParameter', async () => {
     const parser = await initializeParser();
-    const tree = parser.parse('type Temperature = Real(unit = "K ");');
+    const tree = parser.parse('type Temperature = Real(unit = "K ");')!;
 
     const classNode = tree.rootNode
       .childForFieldName('storedDefinitions')!
@@ -70,7 +70,7 @@ describe('nodeToSymbolInformation', () => {
 describe('getAllDeclarationsInTree', () => {
   it('Definitions and types', async () => {
     const parser = await initializeParser();
-    const tree = parser.parse(modelicaTestString);
+    const tree = parser.parse(modelicaTestString)!;
     const symbols = getAllDeclarationsInTree(tree, 'file.mo');
 
     const definitions: string[] = [];

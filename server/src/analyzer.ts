@@ -40,7 +40,7 @@
  */
 
 import * as LSP from 'vscode-languageserver/node';
-import { Parser } from 'web-tree-sitter';
+import { Node } from 'web-tree-sitter';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs';
@@ -222,7 +222,7 @@ export default class Analyzer {
     document: ModelicaDocument,
     position: LSP.Position,
   ): UnresolvedReference | null {
-    function checkBeforeCursor(node: Parser.SyntaxNode): boolean {
+    function checkBeforeCursor(node: Node): boolean {
       if (node.startPosition.row < position.line) {
         return true;
       }
@@ -315,10 +315,10 @@ export default class Analyzer {
    * @returns the node at the position, or `undefined` if none was found
    */
   private findNodeAtPosition(
-    rootNode: Parser.SyntaxNode,
+    rootNode: Node,
     offset: number,
-    condition: (node: Parser.SyntaxNode) => boolean,
-  ): Parser.SyntaxNode | undefined {
+    condition: (node: Node) => boolean,
+  ): Node | undefined {
     // TODO: find the deepest node. findFirst doesn't work (maybe?)
     const hoveredNode = TreeSitterUtil.findFirst(rootNode, (node) => {
       const isInNode = offset >= node.startIndex && offset <= node.endIndex;

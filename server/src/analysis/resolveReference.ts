@@ -33,7 +33,7 @@
  *
  */
 
-import { Parser } from 'web-tree-sitter';
+import { Node } from 'web-tree-sitter';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -103,7 +103,7 @@ function* getAbsoluteReferenceCandidates(
     const relativeReference = local ?? reference;
 
     const ancestors: string[] = [];
-    let currentNode: Parser.SyntaxNode | null = relativeReference.node;
+    let currentNode: Node | null = relativeReference.node;
     while (currentNode) {
       if (currentNode.type === 'class_definition') {
         const identifier = TreeSitterUtil.getDeclaredIdentifiers(currentNode).at(0);
@@ -261,7 +261,7 @@ function* findReferenceInDocument(
  */
 function findDeclarationInClass(
   document: ModelicaDocument,
-  classNode: Parser.SyntaxNode,
+  classNode: Node,
   symbols: string[],
   referenceKind: ReferenceKind | undefined,
 ): (UnresolvedRelativeReference & { kind: ReferenceKind }) | undefined {
@@ -370,7 +370,7 @@ interface ResolveImportClauseResult {
  */
 function resolveImportClause(
   symbols: string[],
-  importClause: Parser.SyntaxNode,
+  importClause: Node,
 ): ResolveImportClauseResult {
   // imports are always relative according to the grammar
   const importPath = TreeSitterUtil.getTypeSpecifier(
@@ -561,7 +561,7 @@ function getPackageClassFromFilePath(
   library: ModelicaLibrary,
   filePath: string,
   symbol: string,
-): [ModelicaDocument | undefined, Parser.SyntaxNode | undefined] {
+): [ModelicaDocument | undefined, Node | undefined] {
   const document = library.documents.get(filePath);
   if (!document) {
     logger.debug(`getPackageClassFromFilePath: Couldn't find document ${filePath}`);

@@ -39,9 +39,9 @@
  * -----------------------------------------------------------------------------
  */
 
-import { Parser } from 'web-tree-sitter';
+
 import * as LSP from 'vscode-languageserver/node';
-import { SyntaxNode } from 'web-tree-sitter';
+import { Node, Point } from 'web-tree-sitter';
 
 import { logger } from './logger';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -52,7 +52,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
  * @param node      The node to start iterating from
  * @param callback  The callback to call for each node. Return false to stop following children.
  */
-export function forEach(node: SyntaxNode, callback: (n: SyntaxNode) => void | boolean) {
+export function forEach(node: Node, callback: (n: Node) => void | boolean) {
   const followChildren = callback(node) !== false;
   if (followChildren && node.children.length) {
     node.children.forEach((n) => forEach(n, callback));
@@ -68,9 +68,9 @@ export function forEach(node: SyntaxNode, callback: (n: SyntaxNode) => void | bo
  * @param callback  Callback returning true if node is searched node.
  */
 export function findFirst(
-  start: SyntaxNode,
-  callback: (n: SyntaxNode) => boolean,
-): SyntaxNode | null {
+  start: Node,
+  callback: (n: Node) => boolean,
+): Node | null {
   const cursor = start.walk();
   let reachedRoot = false;
   let retracing = false;
@@ -105,7 +105,7 @@ export function findFirst(
   return null;
 }
 
-export function range(n: SyntaxNode): LSP.Range {
+export function range(n: Node): LSP.Range {
   return LSP.Range.create(
     n.startPosition.row,
     n.startPosition.column,
@@ -120,7 +120,7 @@ export function range(n: SyntaxNode): LSP.Range {
  * @param n Node of tree
  * @returns `true` if node is a definition, `false` otherwise.
  */
-export function isDefinition(n: SyntaxNode): boolean {
+export function isDefinition(n: Node): boolean {
   switch (n.type) {
     case 'class_definition':
       return true;
@@ -135,7 +135,7 @@ export function isDefinition(n: SyntaxNode): boolean {
  * @param n Node of tree
  * @returns `true` if node is a variable declaration, `false` otherwise.
  */
-export function isVariableDeclaration(n: SyntaxNode): boolean {
+export function isVariableDeclaration(n: Node): boolean {
   switch (n.type) {
     case 'component_clause':
     case 'component_redeclaration':
@@ -153,7 +153,7 @@ export function isVariableDeclaration(n: SyntaxNode): boolean {
  * @param n Node of tree
  * @returns `true` if node is an element list, `false` otherwise.
  */
-export function isElementList(n: SyntaxNode): boolean {
+export function isElementList(n: Node): boolean {
   switch (n.type) {
     case 'element_list':
     case 'public_element_list':
@@ -165,9 +165,9 @@ export function isElementList(n: SyntaxNode): boolean {
 }
 
 export function findParent(
-  start: SyntaxNode,
-  predicate: (n: SyntaxNode) => boolean,
-): SyntaxNode | null {
+  start: Node,
+  predicate: (n: Node) => boolean,
+): Node | null {
   let node = start.parent;
   while (node !== null) {
     if (predicate(node)) {
@@ -183,8 +183,8 @@ export function findParent(
  *
  * @param start   Syntax tree node.
  */
-export function getIdentifier(start: SyntaxNode): string | undefined {
-  const node = findFirst(start, (n: SyntaxNode) => n.type == 'IDENT');
+export function getIdentifier(start: Node): string | undefined {
+  const node = findFirst(start, (n: Node) => n.type == 'IDENT');
   return node?.text;
 }
 
@@ -199,7 +199,7 @@ export function getIdentifier(start: SyntaxNode): string | undefined {
  * @param node The node to check. Must be a declaration.
  * @returns The identifiers.
  */
-export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
+export function getDeclaredIdentifiers(node: Node): string[] {
   if (node == null) {
     throw new Error('getDeclaredIdentifiers called with null/undefined node');
   }
@@ -246,7 +246,7 @@ export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
   }
 }
 
-export function hasIdentifier(node: SyntaxNode | null, identifier: string): boolean {
+export function hasIdentifier(node: Node | null, identifier: string): boolean {
   if (!node) {
     return false;
   }
@@ -257,10 +257,10 @@ export function hasIdentifier(node: SyntaxNode | null, identifier: string): bool
 export interface TypeSpecifier {
   isGlobal: boolean;
   symbols: string[];
-  symbolNodes: SyntaxNode[];
+  symbolNodes: Node[];
 }
 
-export function getTypeSpecifier(node: SyntaxNode): TypeSpecifier {
+export function getTypeSpecifier(node: Node): TypeSpecifier {
   switch (node.type) {
     case 'type_specifier': {
       const isGlobal = node.childForFieldName('global') !== null;
@@ -306,10 +306,10 @@ export function getTypeSpecifier(node: SyntaxNode): TypeSpecifier {
 export interface ComponentReference {
   isGlobal: boolean;
   components: string[];
-  componentNodes: SyntaxNode[];
+  componentNodes: Node[];
 }
 
-export function getComponentReference(node: SyntaxNode): ComponentReference {
+export function getComponentReference(node: Node): ComponentReference {
   switch (node.type) {
     case 'component_reference': {
       const isGlobal = node.childForFieldName('global') !== null;
@@ -339,9 +339,9 @@ export function getComponentReference(node: SyntaxNode): ComponentReference {
 }
 
 /**
- * Converts a name `SyntaxNode` into an array of the `IDENT`s in that node.
+ * Converts a name `Node` into an array of the `IDENT`s in that node.
  */
-function getNameIdentifiers(nameNode: SyntaxNode): Parser.SyntaxNode[] {
+function getNameIdentifiers(nameNode: Node): Node[] {
   if (nameNode.type !== 'name' && nameNode.type !== 'component_reference') {
     throw new Error(
       `Expected a 'name' or 'component_reference' node; got '${nameNode.type}' (${nameNode.text})`,
@@ -364,7 +364,7 @@ function getNameIdentifiers(nameNode: SyntaxNode): Parser.SyntaxNode[] {
  * @param node  Class definition node.
  * @returns     String with class prefixes or `null` if no `class_prefixes` can be found.
  */
-export function getClassPrefixes(node: SyntaxNode): string | null {
+export function getClassPrefixes(node: Node): string | null {
   if (node.type !== 'class_definition') {
     return null;
   }
@@ -377,25 +377,25 @@ export function getClassPrefixes(node: SyntaxNode): string | null {
   return classPrefixNode.text;
 }
 
-export function positionToPoint(position: LSP.Position): Parser.Point {
+export function positionToPoint(position: LSP.Position): Point {
   return { row: position.line, column: position.character };
 }
 
-export function pointToPosition(point: Parser.Point): LSP.Position {
+export function pointToPosition(point: Point): LSP.Position {
   return { line: point.row, character: point.column };
 }
 
 export function createLocationLink(
   document: TextDocument,
-  node: Parser.SyntaxNode,
+  node: Node,
 ): LSP.LocationLink;
 export function createLocationLink(
   documentUri: LSP.DocumentUri,
-  node: Parser.SyntaxNode,
+  node: Node,
 ): LSP.LocationLink;
 export function createLocationLink(
   document: TextDocument | LSP.DocumentUri,
-  node: Parser.SyntaxNode,
+  node: Node,
 ): LSP.LocationLink {
   // TODO: properly set targetSelectionRange (e.g. the name of a function or variable).
   return {

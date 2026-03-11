@@ -79,7 +79,7 @@ export function getAllDeclarationsInTree(tree: Parser.Tree, uri: string): LSP.Sy
  * @returns     Symbol information from node.
  */
 export function nodeToSymbolInformation(
-  node: Parser.SyntaxNode,
+  node: Parser.Node,
   uri: string,
 ): LSP.SymbolInformation | null {
   const named = node.firstNamedChild;
@@ -116,7 +116,7 @@ export function nodeToSymbolInformation(
  * @returns     LSP symbol information for definition.
  */
 function getDeclarationSymbolFromNode(
-  node: Parser.SyntaxNode,
+  node: Parser.Node,
   uri: string,
 ): LSP.SymbolInformation | null {
   if (TreeSitterUtil.isDefinition(node)) {
@@ -132,7 +132,7 @@ function getDeclarationSymbolFromNode(
  * @param node Node containing class_definition
  * @returns Symbol kind or `undefined`.
  */
-function getKind(node: Parser.SyntaxNode): LSP.SymbolKind | undefined {
+function getKind(node: Parser.Node): LSP.SymbolKind | undefined {
   const classPrefixes = TreeSitterUtil.getClassPrefixes(node)?.split(/\s+/);
   if (classPrefixes === undefined) {
     return undefined;

@@ -35,7 +35,7 @@
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import * as LSP from 'vscode-languageserver/node';
-import { Parser } from 'web-tree-sitter';
+import { Tree, Point, Edit } from 'web-tree-sitter';
 import * as fs from 'node:fs/promises';
 import * as TreeSitterUtil from '../util/tree-sitter';
 
@@ -49,13 +49,13 @@ export class ModelicaDocument implements TextDocument {
   readonly #project: ModelicaProject;
   readonly #library: ModelicaLibrary | null;
   readonly #document: TextDocument;
-  #tree: Parser.Tree;
+  #tree: Tree;
 
   public constructor(
     project: ModelicaProject,
     library: ModelicaLibrary | null,
     document: TextDocument,
-    tree: Parser.Tree,
+    tree: Tree,
   ) {
     this.#project = project;
     this.#library = library;
@@ -84,7 +84,7 @@ export class ModelicaDocument implements TextDocument {
       const uri = pathToUri(documentPath);
       const document = TextDocument.create(uri, 'modelica', 0, content);
 
-      const tree = project.parser.parse(content);
+      const tree = project.parser.parse(content)!;
 
       return new ModelicaDocument(project, library, document, tree);
     } catch (err) {
@@ -103,7 +103,7 @@ export class ModelicaDocument implements TextDocument {
   public async update(text: string, range?: LSP.Range): Promise<void> {
     if (range === undefined) {
       TextDocument.update(this.#document, [{ text }], this.version + 1);
-      this.#tree = this.project.parser.parse(text);
+      this.#tree = this.project.parser.parse(text)!;
       return;
     }
 
@@ -116,16 +116,16 @@ export class ModelicaDocument implements TextDocument {
     TextDocument.update(this.#document, [{ text, range }], this.version + 1);
     const newEndPosition = positionToPoint(this.positionAt(newEndIndex));
 
-    this.#tree.edit({
+    this.#tree.edit(new Edit({
       startIndex,
       startPosition,
       oldEndIndex,
       oldEndPosition,
       newEndIndex,
       newEndPosition,
-    });
+    }));
 
-    this.#tree = this.project.parser.parse((index: number, position?: Parser.Point) => {
+    this.#tree = this.project.parser.parse((index: number, position?: Point) => {
       if (position) {
         return this.getText({
           start: {
@@ -143,7 +143,7 @@ export class ModelicaDocument implements TextDocument {
           end: this.positionAt(index + 1),
         });
       }
-    }, this.#tree);
+    }, this.#tree)!;
   }
 
   public getText(range?: LSP.Range | undefined): string {
@@ -216,7 +216,7 @@ export class ModelicaDocument implements TextDocument {
     return this.#library;
   }
 
-  public get tree(): Parser.Tree {
+  public get tree(): Tree {
     return this.#tree;
   }
 }
