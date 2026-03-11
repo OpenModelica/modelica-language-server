@@ -40,7 +40,7 @@
  */
 
 import * as LSP from 'vscode-languageserver/node';
-import Parser from 'web-tree-sitter';
+import { Parser } from 'web-tree-sitter';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs';

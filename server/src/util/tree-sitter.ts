@@ -39,7 +39,7 @@
  * -----------------------------------------------------------------------------
  */
 
-import Parser from 'web-tree-sitter';
+import { Parser } from 'web-tree-sitter';
 import * as LSP from 'vscode-languageserver/node';
 import { SyntaxNode } from 'web-tree-sitter';
 

@@ -34,7 +34,7 @@
  */
 
 import { ModelicaDocument } from '../project/document';
-import Parser from 'web-tree-sitter';
+import { Parser } from 'web-tree-sitter';
 
 export type ReferenceKind = 'class' | 'variable';
 

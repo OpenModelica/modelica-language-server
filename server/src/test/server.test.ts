@@ -56,7 +56,7 @@ describe('Modelica tree-sitter parser', () => {
 
   it('Parse string', async () => {
     const parser = await initializeParser();
-    const tree = parser.parse(modelicaTestString);
+    const tree = parser.parse(modelicaTestString)!;
     const parsedString = tree.rootNode.toString();
     assert.equal(parsedString, parsedModelicaTestString);
   });

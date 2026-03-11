@@ -35,7 +35,7 @@
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import * as LSP from 'vscode-languageserver/node';
-import Parser from 'web-tree-sitter';
+import { Parser } from 'web-tree-sitter';
 import * as fs from 'node:fs/promises';
 import * as TreeSitterUtil from '../util/tree-sitter';
 
