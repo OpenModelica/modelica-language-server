@@ -34,8 +34,20 @@
  */
 
 import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 
 import { runTests } from '@vscode/test-electron';
+
+const MSL_CANDIDATES = [
+  path.join(os.homedir(), '.openmodelica', 'libraries', 'Modelica 4.0.0+maint.om'),
+  path.join(os.homedir(), '.openmodelica', 'libraries', 'Modelica 4.1.0+maint.om'),
+  '/usr/lib/omlibrary/Modelica 4.0.0+maint.om',
+];
+
+function detectMsl(): string | undefined {
+  return MSL_CANDIDATES.find((p) => fs.existsSync(path.join(p, 'package.mo')));
+}
 
 async function main() {
   try {
@@ -47,8 +59,28 @@ async function main() {
     // Passed to --extensionTestsPath
     const extensionTestsPath = path.resolve(__dirname, './index');
 
+    // Use the testFixture folder as VS Code workspace so .vscode/settings.json is picked up
+    const testFixturePath = path.resolve(__dirname, '../../testFixture');
+
+    // Write workspace settings with MSL path if found on this machine
+    const mslPath = detectMsl();
+    const vscodeDir = path.join(testFixturePath, '.vscode');
+    fs.mkdirSync(vscodeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(vscodeDir, 'settings.json'),
+      JSON.stringify(
+        { 'modelica.libraries': mslPath ? [mslPath] : [] },
+        null,
+        2,
+      ),
+    );
+
     // Download VS Code, unzip it and run the integration test
-    await runTests({ extensionDevelopmentPath, extensionTestsPath });
+    await runTests({
+      extensionDevelopmentPath,
+      extensionTestsPath,
+      launchArgs: [testFixturePath],
+    });
   } catch (err) {
     console.error('Failed to run tests');
     process.exit(1);

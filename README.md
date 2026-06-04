@@ -22,6 +22,39 @@ features:
 
     ![Goto Declaration](images/goto_declaration_demo.png)
 
+## Configuration
+
+### Loading external Modelica libraries
+
+To make the language server aware of libraries outside your workspace (such as
+the Modelica Standard Library), add their root directories to
+`modelica.libraries` in your VS Code settings.
+
+**Workspace settings** (`.vscode/settings.json`):
+
+```json
+{
+  "modelica.libraries": [
+    "/path/to/Modelica 4.0.0+maint.om"
+  ]
+}
+```
+
+**User settings** (via *File → Preferences → Settings*, search for
+`modelica.libraries`): click *Add Item* and enter the path to each library
+root directory — the folder that contains a `package.mo` file.
+
+Typical paths:
+
+| Platform | Default OpenModelica library location    |
+|----------|------------------------------------------|
+| Linux    | `~/.openmodelica/libraries/`             |
+| Windows  | `%APPDATA%\OpenModelica\libraries\`      |
+| macOS    | `~/.openmodelica/libraries/`             |
+
+The server loads all configured libraries at startup. Changes take effect after
+reloading the VS Code window (**Developer: Reload Window**).
+
 ## Installation
 
 ### Via Marketplace
