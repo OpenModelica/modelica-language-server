@@ -39,9 +39,8 @@
  * -----------------------------------------------------------------------------
  */
 
-import Parser from 'web-tree-sitter';
+import { Parser, Node as SyntaxNode, Point } from 'web-tree-sitter';
 import * as LSP from 'vscode-languageserver/node';
-import { SyntaxNode } from 'web-tree-sitter';
 
 import { logger } from './logger';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -73,10 +72,9 @@ export function findFirst(
 ): SyntaxNode | null {
   const cursor = start.walk();
   let reachedRoot = false;
-  let retracing = false;
 
   while (!reachedRoot) {
-    const node = cursor.currentNode();
+    const node = cursor.currentNode;
     if (callback(node) === true) {
       return node;
     }
@@ -89,15 +87,13 @@ export function findFirst(
       continue;
     }
 
-    retracing = true;
-    while (retracing) {
+    while (true) {
       if (!cursor.gotoParent()) {
-        retracing = false;
         reachedRoot = true;
+        break;
       }
-
       if (cursor.gotoNextSibling()) {
-        retracing = false;
+        break;
       }
     }
   }
@@ -341,7 +337,7 @@ export function getComponentReference(node: SyntaxNode): ComponentReference {
 /**
  * Converts a name `SyntaxNode` into an array of the `IDENT`s in that node.
  */
-function getNameIdentifiers(nameNode: SyntaxNode): Parser.SyntaxNode[] {
+function getNameIdentifiers(nameNode: SyntaxNode): SyntaxNode[] {
   if (nameNode.type !== 'name' && nameNode.type !== 'component_reference') {
     throw new Error(
       `Expected a 'name' or 'component_reference' node; got '${nameNode.type}' (${nameNode.text})`,
@@ -377,25 +373,25 @@ export function getClassPrefixes(node: SyntaxNode): string | null {
   return classPrefixNode.text;
 }
 
-export function positionToPoint(position: LSP.Position): Parser.Point {
+export function positionToPoint(position: LSP.Position): Point {
   return { row: position.line, column: position.character };
 }
 
-export function pointToPosition(point: Parser.Point): LSP.Position {
+export function pointToPosition(point: Point): LSP.Position {
   return { line: point.row, character: point.column };
 }
 
 export function createLocationLink(
   document: TextDocument,
-  node: Parser.SyntaxNode,
+  node: SyntaxNode,
 ): LSP.LocationLink;
 export function createLocationLink(
   documentUri: LSP.DocumentUri,
-  node: Parser.SyntaxNode,
+  node: SyntaxNode,
 ): LSP.LocationLink;
 export function createLocationLink(
   document: TextDocument | LSP.DocumentUri,
-  node: Parser.SyntaxNode,
+  node: SyntaxNode,
 ): LSP.LocationLink {
   // TODO: properly set targetSelectionRange (e.g. the name of a function or variable).
   return {

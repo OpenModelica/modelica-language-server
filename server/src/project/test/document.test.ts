@@ -75,7 +75,7 @@ describe('ModelicaDocument', () => {
 
   it('can update the entire document', () => {
     const textDocument = createTextDocument('.', TEST_PACKAGE_CONTENT);
-    const tree = project.parser.parse(TEST_PACKAGE_CONTENT);
+    const tree = project.parser.parse(TEST_PACKAGE_CONTENT)!;
     const document = new ModelicaDocument(project, library, textDocument, tree);
     document.update(UPDATED_TEST_PACKAGE_CONTENT);
 
@@ -84,7 +84,7 @@ describe('ModelicaDocument', () => {
 
   it('can update incrementally', () => {
     const textDocument = createTextDocument('.', TEST_PACKAGE_CONTENT);
-    const tree = project.parser.parse(TEST_PACKAGE_CONTENT);
+    const tree = project.parser.parse(TEST_PACKAGE_CONTENT)!;
     const document = new ModelicaDocument(project, library, textDocument, tree);
     document.update(
       '1.0.1',
@@ -124,7 +124,7 @@ describe('ModelicaDocument', () => {
 
   it('a file with no `within` clause has the correct package path', () => {
     const textDocument = createTextDocument('./package.mo', TEST_PACKAGE_CONTENT);
-    const tree = project.parser.parse(TEST_PACKAGE_CONTENT);
+    const tree = project.parser.parse(TEST_PACKAGE_CONTENT)!;
     const document = new ModelicaDocument(project, library, textDocument, tree);
 
     assert.deepEqual(document.within, []);
@@ -132,7 +132,7 @@ describe('ModelicaDocument', () => {
 
   it('a file with a `within` clause has the correct package path', () => {
     const textDocument = createTextDocument('./Foo/Bar/Frobnicator.mo', TEST_CLASS_CONTENT);
-    const tree = project.parser.parse(TEST_CLASS_CONTENT);
+    const tree = project.parser.parse(TEST_CLASS_CONTENT)!;
     const document = new ModelicaDocument(project, library, textDocument, tree);
 
     assert.deepEqual(document.within, ['TestPackage', 'Foo', 'Bar']);

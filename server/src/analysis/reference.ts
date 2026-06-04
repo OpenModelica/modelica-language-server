@@ -34,7 +34,7 @@
  */
 
 import { ModelicaDocument } from '../project/document';
-import Parser from 'web-tree-sitter';
+import { Parser, Node as SyntaxNode } from 'web-tree-sitter';
 
 export type ReferenceKind = 'class' | 'variable';
 
@@ -69,11 +69,11 @@ export class UnresolvedRelativeReference extends BaseUnresolvedReference {
   /**
    * A `SyntaxNode` in which the symbol is in scope.
    */
-  public readonly node: Parser.SyntaxNode;
+  public readonly node: SyntaxNode;
 
   public constructor(
     document: ModelicaDocument,
-    node: Parser.SyntaxNode,
+    node: SyntaxNode,
     symbols: string[],
     kind?: ReferenceKind,
   ) {
@@ -161,7 +161,7 @@ export class ResolvedReference {
   /**
    * The node that declares/defines this symbol.
    */
-  readonly node: Parser.SyntaxNode;
+  readonly node: SyntaxNode;
 
   /**
    * The full, absolute path to the symbol.
@@ -172,7 +172,7 @@ export class ResolvedReference {
 
   public constructor(
     document: ModelicaDocument,
-    node: Parser.SyntaxNode,
+    node: SyntaxNode,
     symbols: string[],
     kind: ReferenceKind,
   ) {
