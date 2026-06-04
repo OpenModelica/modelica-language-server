@@ -75,6 +75,9 @@ export function activate(context: ExtensionContext) {
       // Notify the server about file changes to '.clientrc files contained in the workspace
       fileEvents: workspace.createFileSystemWatcher('**/.clientrc'),
     },
+    initializationOptions: {
+      libraries: workspace.getConfiguration('modelica').get<string[]>('libraries', []),
+    },
   };
 
   // Create the language client and start the client.

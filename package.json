@@ -29,6 +29,20 @@
   ],
   "main": "./out/client",
   "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "Modelica Language Server",
+      "properties": {
+        "modelica.libraries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "List of paths to Modelica library root directories to load on startup."
+        }
+      }
+    },
     "languages": [
       {
         "id": "modelica",

@@ -2,3 +2,4 @@
 modelica-language-server*.vsix
 node_modules/
 out/
+client/testFixture/.vscode/settings.json
