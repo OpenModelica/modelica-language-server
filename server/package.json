@@ -1,10 +1,15 @@
 {
-  "name": "modelica-language-server-server",
-  "displayName": "Modelica Language Server",
-  "description": "[Experimental] Modelica language server.",
-  "version": "0.2.0",
+  "name": "@openmodelica/modelica-language-server",
+  "description": "Modelica language server (LSP)",
+  "keywords": [
+    "modelica",
+    "language-server",
+    "lsp",
+    "openmodelica"
+  ],
+  "version": "0.2.1",
   "author": "Andreas Heuermann, Osman Karabel, Evan Hedbor, PaddiM8",
-  "license": "OSMC-PL-1-8",
+  "license": "(AGPL-3.0-only OR LicenseRef-OSMC-PL-1-8)",
   "engines": {
     "node": "20"
   },
@@ -12,11 +17,29 @@
     "type": "git",
     "url": "https://github.com/OpenModelica/modelica-language-server"
   },
+  "main": "out/server.js",
+  "bin": {
+    "modelica-language-server": "out/server.js"
+  },
+  "files": [
+    "out/",
+    "LICENSE",
+    "OSMC-License.txt"
+  ],
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "build:watch": "node esbuild.config.js --watch",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.3"
+  },
   "dependencies": {
     "tree-sitter": "^0.21.1",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.11",
     "web-tree-sitter": "^0.20.8"
-  },
-  "scripts": {}
+  }
 }

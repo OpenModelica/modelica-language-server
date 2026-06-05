@@ -1,4 +1,8 @@
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
 .vscode-test
+.vscode/*
 modelica-language-server*.vsix
 node_modules/
 out/
