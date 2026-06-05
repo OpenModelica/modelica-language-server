@@ -33,7 +33,6 @@
  *
  */
 
-import Parser from 'web-tree-sitter';
 import { ModelicaProject, ModelicaLibrary } from '..';
 import assert from 'node:assert/strict';
 import path from 'node:path';

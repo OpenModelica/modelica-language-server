@@ -179,7 +179,6 @@ function getLogLevelFromEnvironment(): LogLevel {
     if (logLevel in LOG_LEVELS_TO_MESSAGE_TYPES) {
       return logLevel as LogLevel;
     }
-    // eslint-disable-next-line no-console
     console.warn(
       `Invalid ${LOG_LEVEL_ENV_VAR} "${logLevel}", expected one of: ${Object.keys(
         LOG_LEVELS_TO_MESSAGE_TYPES,

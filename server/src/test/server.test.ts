@@ -33,9 +33,7 @@
  *
  */
 
-import * as Mocha from 'mocha';
 import * as assert from 'assert';
-import * as Parser from 'web-tree-sitter';
 
 import { initializeParser } from '../parser';
 
@@ -57,6 +55,7 @@ describe('Modelica tree-sitter parser', () => {
   it('Parse string', async () => {
     const parser = await initializeParser();
     const tree = parser.parse(modelicaTestString);
+    assert.ok(tree, 'parser.parse returned null');
     const parsedString = tree.rootNode.toString();
     assert.equal(parsedString, parsedModelicaTestString);
   });

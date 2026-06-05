@@ -51,12 +51,7 @@ function detectMsl(): string | undefined {
 
 async function main() {
   try {
-    // The folder containing the Extension Manifest package.json
-    // Passed to `--extensionDevelopmentPath`
     const extensionDevelopmentPath = path.resolve(__dirname, '../../../');
-
-    // The path to test runner
-    // Passed to --extensionTestsPath
     const extensionTestsPath = path.resolve(__dirname, './index');
 
     // Use the testFixture folder as VS Code workspace so .vscode/settings.json is picked up

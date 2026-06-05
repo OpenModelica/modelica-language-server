@@ -34,9 +34,8 @@
  */
 
 import * as LSP from 'vscode-languageserver';
-import * as fsWalk from '@nodelib/fs.walk';
+import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import * as util from 'node:util';
 
 import { logger } from '../util/logger';
 import { ModelicaDocument } from './document';
@@ -56,7 +55,8 @@ export class ModelicaLibrary {
     name?: string,
   ) {
     this.#project = project;
-    (this.#path = libraryPath), (this.#documents = new Map());
+    this.#path = libraryPath;
+    this.#documents = new Map();
     this.#isWorkspace = isWorkspace;
     // Path basename could contain version seperated by whitespace
     this.#name = name ?? path.basename(this.path).split(/\s/)[0];
@@ -92,14 +92,15 @@ export class ModelicaLibrary {
 
     logger.debug(`Set library path to ${library.path}`);
 
-    const walk = util.promisify(fsWalk.walk);
-    const entries = await walk(library.#path, {
-      entryFilter: (entry) => !!entry.name.match(/.*\.mo/) && !entry.dirent.isDirectory(),
-    });
+    const allFiles = await fs.readdir(library.#path, { recursive: true, withFileTypes: true });
+    const entries = allFiles.filter(
+      (entry) => entry.name.endsWith('.mo') && entry.isFile(),
+    );
 
     for (const entry of entries) {
-      const document = await ModelicaDocument.load(project, library, entry.path);
-      library.#documents.set(entry.path, document);
+      const filePath = path.join(entry.parentPath, entry.name);
+      const document = await ModelicaDocument.load(project, library, filePath);
+      library.#documents.set(filePath, document);
     }
 
     logger.debug(`Loaded ${library.#documents.size} documents`);
