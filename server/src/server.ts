@@ -43,6 +43,7 @@ import * as LSP from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import url from 'node:url';
 import fs from 'node:fs/promises';
+import path from 'node:path';
 
 import { initializeParser } from './parser';
 import Analyzer from './analyzer';
@@ -69,7 +70,7 @@ export class ModelicaServer {
 
   public static async initialize(
     connection: LSP.Connection,
-    { capabilities, workspaceFolders }: LSP.InitializeParams,
+    { capabilities, workspaceFolders, initializationOptions }: LSP.InitializeParams,
   ): Promise<ModelicaServer> {
     // Initialize logger
     setLoggerOptions({
@@ -85,7 +86,27 @@ export class ModelicaServer {
         await analyzer.loadLibrary(workspace.uri, true);
       }
     }
-    // TODO: add libraries as well
+
+    const configuredLibraries = [
+      ...(Array.isArray(
+        (initializationOptions as { modelicaPath?: unknown } | undefined)?.modelicaPath,
+      )
+        ? (initializationOptions as { modelicaPath: unknown[] }).modelicaPath.filter(
+            (value): value is string => typeof value === 'string' && value.length > 0,
+          )
+        : []),
+      ...(Array.isArray((initializationOptions as { libraries?: unknown } | undefined)?.libraries)
+        ? (initializationOptions as { libraries: unknown[] }).libraries.filter(
+            (value): value is string => typeof value === 'string' && value.length > 0,
+          )
+        : []),
+    ];
+
+    for (const libraryPath of configuredLibraries) {
+      const libraryUri = url.pathToFileURL(path.resolve(libraryPath)).toString();
+      logger.debug(`Loading configured library '${libraryPath}'`);
+      await analyzer.loadLibrary(libraryUri, false);
+    }
 
     logger.debug('Initialized');
     return new ModelicaServer(analyzer, capabilities, connection);
