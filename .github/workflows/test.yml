@@ -113,4 +113,6 @@ jobs:
           npx ovsx publish $(ls modelica-language-server-*.vsix) -p ${{ secrets.OPEN_VSX_TOKEN }}
 
       - name: Publish to npm
-        run: npm publish server-release/openmodelica-modelica-language-server-*.tgz --access public
+        if: always()
+        run: |
+          npm publish server-release/openmodelica-modelica-language-server-*.tgz --access public
