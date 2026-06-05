@@ -52,6 +52,22 @@ jobs:
           name: modelica-language-server.vsix
           path: modelica-language-server-*.vsix
 
+      - name: Pack server npm package
+        working-directory: server
+        run: npm pack
+
+      - name: Stage server release files
+        run: |
+          mkdir server-release
+          cp server/openmodelica-modelica-language-server-*.tgz server-release/
+          cp server/src/tree-sitter-modelica.wasm server-release/
+
+      - name: Archive server release files
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-release
+          path: server-release/
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
     needs: build
@@ -59,15 +75,28 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+
       - uses: actions/download-artifact@v8
         with:
           name: modelica-language-server.vsix
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: server-release
+          path: server-release/
 
       - name: Release
         uses: softprops/action-gh-release@v3
         with:
           files: |
             modelica-language-server-*.vsix
+            server-release/openmodelica-modelica-language-server-*.tgz
+            server-release/tree-sitter-modelica.wasm
           fail_on_unmatched_files: true
           generate_release_notes: true
           append_body: true
@@ -81,3 +110,8 @@ jobs:
         if: always()
         run: |
           npx ovsx publish $(ls modelica-language-server-*.vsix) -p ${{ secrets.OPEN_VSX_TOKEN }}
+
+      - name: Publish to npm
+        run: npm publish server-release/openmodelica-modelica-language-server-*.tgz --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -65,7 +65,7 @@ reloading the VS Code window (**Developer: Reload Window**).
 ### Via VSIX File
 
 Download the latest
-[modelica-language-server-0.2.0.vsix][vsix-download]
+[modelica-language-server-0.2.2.vsix][vsix-download]
 from the
 [releases][releases]
 page.
@@ -75,7 +75,7 @@ on how to install a .vsix file.
 Use the `Install from VSIX` command or run
 
 ```bash
-code --install-extension modelica-language-server-0.2.0.vsix
+code --install-extension modelica-language-server-0.2.2.vsix
 ```
 
 ## Contributing ❤️
@@ -170,5 +170,5 @@ This package was initially developed by
 [tree-sitter-modelica]: https://github.com/OpenModelica/tree-sitter-modelica
 [vscode-install-vsix]: https://code.visualstudio.com/docs/editor/extension-marketplace#_install-from-a-vsix
 [vscode-watch-mode]: https://code.visualstudio.com/docs/editor/tasks#:~:text=The%20first%20entry%20executes,the%20HelloWorld.js%20file.
-[vsix-download]: https://github.com/OpenModelica/modelica-language-server/releases/download/v0.2.0/modelica-language-server-0.2.0.vsix
+[vsix-download]: https://github.com/OpenModelica/modelica-language-server/releases/download/v0.2.2/modelica-language-server-0.2.2.vsix
 [workflow-test]: https://github.com/OpenModelica/modelica-language-server/actions/workflows/test.yml
