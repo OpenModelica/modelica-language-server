@@ -22,6 +22,10 @@ features:
 
   ![Goto Declaration](images/goto_declaration_demo.png)
 
+- Hover provider for declared symbols.
+
+  ![Hover](images/hover_demo.png)
+
 ## Configuration
 
 ### Loading external Modelica libraries
@@ -54,10 +58,6 @@ Typical paths:
 
 The server loads all configured libraries at startup. Changes take effect after
 reloading the VS Code window (**Developer: Reload Window**).
-
-  - Hover provider for declared symbols.
-
-    ![Hover](images/hover_demo.png)
 
 ## Installation
 

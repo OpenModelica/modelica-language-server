@@ -16,7 +16,7 @@ This package is the standalone LSP server. It communicates over stdio and works 
 | Go to declaration         | ✓       |
 | Go to definition          | ✓       |
 | Incremental document sync | ✓       |
-| Hover                     | planned |
+| Hover                     | ✓       |
 | Completion                | planned |
 
 ## Installation
