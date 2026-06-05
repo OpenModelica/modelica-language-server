@@ -5,7 +5,7 @@
     "lib": [
       "es2022"
     ],
-    "types": ["mocha"],
+    "types": ["mocha", "node"],
     "moduleResolution": "node16",
     "skipLibCheck": true,
     "declaration": true,
