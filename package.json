@@ -2,7 +2,7 @@
   "name": "modelica-language-server",
   "displayName": "Modelica Language Server",
   "description": "[Experimental] Modelica language server",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "author": "Andreas Heuermann, Osman Karabel, Evan Hedbor, PaddiM8",
   "license": "OSMC-PL-1-8",
   "repository": {
@@ -69,7 +69,10 @@
     "test:e2e:win32": "npm run test-compile && powershell -File ./scripts/e2e.ps1",
     "test:e2e:default": "npm run test-compile && sh ./scripts/e2e.sh",
     "test:server": "cd server && npx mocha --require $(node -e \"process.stdout.write(require.resolve('tsx/cjs'))\") src/test/**/*.test.ts src/project/test/**/*.test.ts src/util/test/**/*.test.ts src/analysis/test/**/*.test.ts",
-    "all": "npm run postinstall && npm run esbuild && npm run lint && npm run test:server && npm run test:e2e && npm run vscode:prepublish"
+    "all": "npm run postinstall && npm run esbuild && npm run lint && npm run test:server && npm run test:e2e && npm run vscode:prepublish",
+    "version:patch": "npm version patch --no-git-tag-version && npm --prefix ./client version patch --no-git-tag-version && npm --prefix ./server version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version && npm --prefix ./client version minor --no-git-tag-version && npm --prefix ./server version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version && npm --prefix ./client version major --no-git-tag-version && npm --prefix ./server version major --no-git-tag-version"
   },
   "overrides": {
     "diff": "^9.0.0",

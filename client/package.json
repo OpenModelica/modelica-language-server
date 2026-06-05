@@ -3,7 +3,7 @@
   "description": "VSCode part of a language server",
   "author": "Andreas Heuermann, Osman Karabel, Evan Hedbor, PaddiM8",
   "license": "OSMC-PL-1-8",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "vscode",
   "repository": {
     "type": "git",
