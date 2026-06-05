@@ -40,47 +40,100 @@
  */
 
 import * as LSP from 'vscode-languageserver/node';
-import { TextDocument } from 'vscode-languageserver-textdocument';
-import Parser = require('web-tree-sitter');
+import { Parser, Node as SyntaxNode } from 'web-tree-sitter';
+import * as path from 'node:path';
+import * as fs from 'node:fs/promises';
+import * as fsSync from 'node:fs';
+import * as url from 'node:url';
 
+import {
+  UnresolvedAbsoluteReference,
+  UnresolvedReference,
+  UnresolvedRelativeReference,
+} from './analysis/reference';
+import resolveReference from './analysis/resolveReference';
+import { ModelicaDocument, ModelicaLibrary, ModelicaProject } from './project';
+import { uriToPath } from './util';
+import * as TreeSitterUtil from './util/tree-sitter';
 import { getAllDeclarationsInTree } from './util/declarations';
 import { logger } from './util/logger';
-
-type AnalyzedDocument = {
-  document: TextDocument;
-  declarations: LSP.SymbolInformation[];
-  tree: Parser.Tree;
-};
+import { extractHoverInformation } from './util/hoverUtil';
 
 export default class Analyzer {
-  #parser: Parser;
-  #uriToAnalyzedDocument: Record<string, AnalyzedDocument | undefined> = {};
+  #project: ModelicaProject;
 
   public constructor(parser: Parser) {
-    this.#parser = parser;
+    this.#project = new ModelicaProject(parser);
   }
 
-  public analyze(document: TextDocument): LSP.Diagnostic[] {
-    logger.debug('analyze:');
+  /**
+   * Adds a library (and all of its documents) to the analyzer.
+   *
+   * @param uri uri to the library root
+   * @param isWorkspace `true` if this is a user workspace/project, `false` if
+   *     this is a library.
+   */
+  public async loadLibrary(uri: LSP.URI, isWorkspace: boolean): Promise<void> {
+    const isLibrary = (folderPath: string) =>
+      fsSync.existsSync(path.join(folderPath, 'package.mo'));
 
-    const diagnostics: LSP.Diagnostic[] = [];
-    const fileContent = document.getText();
-    const uri = document.uri;
+    const libraryPath = url.fileURLToPath(uri);
+    if (!isWorkspace || isLibrary(libraryPath)) {
+      const lib = await ModelicaLibrary.load(this.#project, libraryPath, isWorkspace);
+      this.#project.addLibrary(lib);
+      return;
+    }
 
-    const tree = this.#parser.parse(fileContent);
-    logger.debug(tree.rootNode.toString());
+    // TODO: go deeper... something like `TreeSitterUtil.forEach` but for files
+    //       would be good here
+    for (const nestedRelative of await fs.readdir(libraryPath)) {
+      const nested = path.resolve(nestedRelative);
+      if (!isLibrary(nested)) {
+        continue;
+      }
 
-    // Get declarations
-    const declarations = getAllDeclarationsInTree(tree, uri);
+      const library = await ModelicaLibrary.load(this.#project, nested, isWorkspace);
+      this.#project.addLibrary(library);
+    }
+  }
 
-    // Update saved analysis for document uri
-    this.#uriToAnalyzedDocument[uri] = {
-      document,
-      declarations,
-      tree,
-    };
+  /**
+   * Adds a document to the analyzer.
+   *
+   * Note: {@link loadLibrary} already adds all discovered documents to the
+   * analyzer. It is only necessary to call this method on file creation.
+   *
+   * @param uri uri to document to add
+   * @throws if the document does not belong to a library
+   */
+  public async addDocument(uri: LSP.DocumentUri): Promise<void> {
+    await this.#project.addDocument(uriToPath(uri));
+  }
 
-    return diagnostics;
+  /**
+   * Submits a modification to a document. Ignores documents that have not been
+   * added with {@link addDocument} or {@link loadLibrary}.
+   *
+   * @param uri uri to document to update
+   * @param text the modification
+   * @param range range to update, or `undefined` to replace the whole file
+   */
+  public async updateDocument(
+    uri: LSP.DocumentUri,
+    text: string,
+    range?: LSP.Range,
+  ): Promise<void> {
+    await this.#project.updateDocument(uriToPath(uri), text, range);
+  }
+
+  /**
+   * Removes a document from the analyzer. Ignores documents that have not been
+   * added or have already been removed.
+   *
+   * @param uri uri to document to remove
+   */
+  public removeDocument(uri: LSP.DocumentUri): void {
+    this.#project.removeDocument(uriToPath(uri));
   }
 
   /**
@@ -88,8 +141,12 @@ export default class Analyzer {
    *
    * TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found in a given text document.
    */
-  public getDeclarationsForUri(uri: string): LSP.SymbolInformation[] {
-    const tree = this.#uriToAnalyzedDocument[uri]?.tree;
+  public async getDeclarationsForUri(uri: string): Promise<LSP.SymbolInformation[]> {
+    // TODO: convert to DocumentSymbol[] which is a hierarchy of symbols found
+    // in a given text document.
+    const path = uriToPath(uri);
+    const document = await this.#project.getDocument(path);
+    const tree = document?.tree;
 
     if (!tree?.rootNode) {
       return [];
@@ -99,149 +156,233 @@ export default class Analyzer {
   }
 
   /**
-   * Get all reachable definitions matching identifier.
+   * Finds the position of the declaration of the symbol at the given position.
    *
-   * TODO: All available analyzed documents are searched. Filter for reachable
-   * files and use scope of identifier.
-   *
-   * @param uri         Text document.
-   * @param position    Position of `identifier` in text document.
-   * @param identifier  Identifier name.
-   * @returns           Array of symbol information for `identifier.
+   * @param uri the opened document
+   * @param position the cursor position
+   * @returns a {@link LSP.LocationLink} to the symbol's declaration, or `null`
+   *     if not found.
    */
-  public getReachableDefinitions(
-    uri: string,
+  public async findDeclaration(
+    uri: LSP.DocumentUri,
     position: LSP.Position,
-    identifier: string): LSP.SymbolInformation[] {
+  ): Promise<LSP.LocationLink | null> {
+    const path = uriToPath(uri);
+    logger.debug(
+      `Searching for declaration of symbol at ${position.line + 1}:${
+        position.character + 1
+      } in '${path}'`,
+    );
 
-    const declarations:LSP.SymbolInformation[] = [];
-
-    // Find all declarations matching identifier.
-    for (const availableUri of Object.keys(this.#uriToAnalyzedDocument)) {
-      // TODO: Filter reachable uri, e.g. because of an include
-      const decl = this.#uriToAnalyzedDocument[availableUri]?.declarations;
-      if (decl) {
-        for (const d of decl) {
-          if (d.name === identifier) {
-            declarations.push(d);
-          }
-        }
-      }
-    }
-
-    // TODO: Filter reachable declarations from scope.
-    return declarations;
-  }
-
-  /**
-   * Find a block of comments above a line position
-   */
-  public commentsAbove(uri: string, line: number): string | null {
-    const doc = this.#uriToAnalyzedDocument[uri]?.document;
-    if (!doc) {
+    const document = await this.#project.getDocument(path);
+    if (!document) {
+      logger.warn(`Couldn't find declaration: document not loaded.`);
       return null;
     }
 
-    let commentBlock = [];
-    let inBlockComment = false;
-
-    // start from the line above
-    let commentBlockIndex = line - 1;
-
-    while (commentBlockIndex >= 0) {
-      let currentLineText = doc.getText({
-        start: { line: commentBlockIndex, character: 0 },
-        end: { line: commentBlockIndex + 1, character: 0 },
-      }).trim();
-
-      if (inBlockComment) {
-        if (currentLineText.startsWith('/*')) {
-          inBlockComment = false;
-          // Remove the /* from the start
-          currentLineText = currentLineText.substring(2).trim();
-        } else {
-          // Remove leading * from lines within the block comment
-          currentLineText = currentLineText.replace(/^\*\s?/, '').trim();
-        }
-        if (currentLineText) { // Don't add empty lines
-          commentBlock.push(currentLineText);
-        }
-      } else {
-        if (currentLineText.startsWith('//')) {
-          // Strip the // and add to block
-          commentBlock.push(currentLineText.substring(2).trim());
-        } else if (currentLineText.endsWith('*/')) {
-          inBlockComment = true;
-          // Remove the */ from the end
-          currentLineText = currentLineText.substring(0, currentLineText.length - 2).trim();
-          if (currentLineText) { // Don't add empty lines
-            commentBlock.push(currentLineText);
-          }
-        } else {
-          break; // Stop if the current line is not part of a comment
-        }
-      }
-
-      commentBlockIndex -= 1;
+    if (!document.tree.rootNode) {
+      logger.info(`Couldn't find declaration: document has no nodes.`);
+      return null;
     }
 
-    if (commentBlock.length) {
-      commentBlock = [...commentBlock.reverse()];
-      return commentBlock.join('\n\n');
+    const reference = this.getReferenceAt(document, position);
+    if (!reference) {
+      logger.info(`Tried to find declaration in '${path}', but not hovering on any identifiers`);
+      return null;
+    }
+
+    logger.debug(
+      `Searching for '${reference}' at ${position.line + 1}:${position.character + 1} in '${path}'`,
+    );
+
+    try {
+      const result = resolveReference(document.project, reference, 'declaration');
+      if (!result) {
+        logger.debug(`Didn't find declaration of ${reference.symbols.join('.')}`);
+        return null;
+      }
+
+      const link = TreeSitterUtil.createLocationLink(result.document, result.node);
+      logger.debug(`Found declaration of ${reference.symbols.join('.')}: `, link);
+      return link;
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        logger.debug('Caught exception: ', e.stack);
+      } else {
+        logger.debug(`Caught:`, e);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Returns hover information for the symbol at the given position.
+   *
+   * @param uri the opened document
+   * @param position the cursor position
+   * @returns Markdown hover content, or `null` if not found.
+   */
+  public async findHoverInfo(
+    uri: LSP.DocumentUri,
+    position: LSP.Position,
+  ): Promise<LSP.Hover | null> {
+    const path = uriToPath(uri);
+    const document = await this.#project.getDocument(path);
+    if (!document || !document.tree.rootNode) {
+      return null;
+    }
+
+    const reference = this.getReferenceAt(document, position);
+    if (!reference) {
+      return null;
+    }
+
+    // Try to resolve via the full resolution system (handles external classes, qualified names).
+    try {
+      const result = resolveReference(document.project, reference, 'declaration');
+      if (result?.node.type === 'class_definition') {
+        return this.hoverFromClassDef(result.node);
+      }
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        logger.debug('Caught exception in findHoverInfo: ', e.stack);
+      }
+    }
+
+    // Fallback: search the current document for a matching class definition.
+    // This handles standalone files where the file name differs from the class name.
+    const lastName = reference.symbols[reference.symbols.length - 1];
+    const localClassDef = TreeSitterUtil.findFirst(
+      document.tree.rootNode,
+      (n) => n.type === 'class_definition' && TreeSitterUtil.hasIdentifier(n, lastName),
+    );
+    if (localClassDef) {
+      return this.hoverFromClassDef(localClassDef);
     }
 
     return null;
   }
 
-  /**
-   * Return IDENT node from given text position.
-   *
-   * Check if a node of type identifier exists at given position and return it.
-   *
-   * @param params  Text document position.
-   * @returns       Identifier syntax node.
-   */
-  public NodeFromTextPosition(
-    params: LSP.TextDocumentPositionParams,
-  ): Parser.SyntaxNode | null {
-
-    const node = this.nodeAtPoint(
-      params.textDocument.uri,
-      params.position.line,
-      params.position.character);
-
-    if (!node || node.childCount > 0 || node.text.trim() === '') {
+  private hoverFromClassDef(classDefNode: SyntaxNode): LSP.Hover | null {
+    const hoverInfo = extractHoverInformation(classDefNode);
+    if (!hoverInfo) {
       return null;
     }
-
-    // Filter for identifier
-    if (node.type !== "IDENT") {
-      return null;
-    }
-
-    return node;
+    return {
+      contents: {
+        kind: LSP.MarkupKind.Markdown,
+        value: hoverInfo,
+      } as LSP.MarkupContent,
+    };
   }
 
   /**
-   * Return abstract syntax tree node representing text position.
-   *
-   * @param uri
-   * @param line
-   * @param column
-   * @returns       Node matching position.
+   * Returns the reference at the document position, or `null` if no reference
+   * exists.
    */
-  private nodeAtPoint(
-    uri: string,
-    line: number,
-    column: number,
-  ): Parser.SyntaxNode | null {
-    const tree = this.#uriToAnalyzedDocument[uri]?.tree;
-
-    if (!tree?.rootNode) {
-      // Check for lacking rootNode (due to failed parse?)
-      return null;
+  private getReferenceAt(
+    document: ModelicaDocument,
+    position: LSP.Position,
+  ): UnresolvedReference | null {
+    function checkBeforeCursor(node: SyntaxNode): boolean {
+      if (node.startPosition.row < position.line) {
+        return true;
+      }
+      return (
+        node.startPosition.row === position.line && node.startPosition.column <= position.character
+      );
     }
 
-    return tree.rootNode.descendantForPosition({ row: line, column });
+    const documentOffset = document.offsetAt(position);
+
+    // First, check if this is a `type_specifier` or a `name`.
+    let hoveredType = this.findNodeAtPosition(
+      document.tree.rootNode,
+      documentOffset,
+      (node) => node.type === 'name',
+    );
+
+    if (hoveredType) {
+      if (hoveredType.parent?.type === 'type_specifier') {
+        hoveredType = hoveredType.parent;
+      }
+
+      const declaredType = TreeSitterUtil.getTypeSpecifier(hoveredType);
+      const symbols = declaredType.symbolNodes.filter(checkBeforeCursor).map((node) => node.text);
+
+      if (declaredType.isGlobal) {
+        return new UnresolvedAbsoluteReference(symbols, 'class');
+      } else {
+        const startNode = this.findNodeAtPosition(
+          hoveredType,
+          documentOffset,
+          (node) => node.type === 'IDENT',
+        )!;
+
+        return new UnresolvedRelativeReference(document, startNode, symbols, 'class');
+      }
+    }
+
+    // Next, check if this is a `component_reference`.
+    const hoveredComponentReference = this.findNodeAtPosition(
+      document.tree.rootNode,
+      documentOffset,
+      (node) => node.type === 'component_reference',
+    );
+    if (hoveredComponentReference) {
+      // TODO: handle array indices
+      const componentReference = TreeSitterUtil.getComponentReference(hoveredComponentReference);
+      const symbols = componentReference.componentNodes
+        .filter(checkBeforeCursor)
+        .map((node) => node.text);
+
+      if (componentReference.isGlobal) {
+        return new UnresolvedAbsoluteReference(symbols, 'variable');
+      } else {
+        const startNode = this.findNodeAtPosition(
+          hoveredComponentReference,
+          documentOffset,
+          (node) => node.type === 'IDENT',
+        )!;
+
+        return new UnresolvedRelativeReference(document, startNode, symbols, 'variable');
+      }
+    }
+
+    // Finally, give up and check if this is just an ident.
+    const startNode = this.findNodeAtPosition(
+      document.tree.rootNode,
+      documentOffset,
+      (node) => node.type === 'IDENT',
+    );
+    if (startNode) {
+      return new UnresolvedRelativeReference(document, startNode, [startNode.text]);
+    }
+
+    // We're not hovering over an identifier.
+    return null;
+  }
+
+  /**
+   * Locates the first node at the given text position that matches the given
+   * `condition`, starting from the `rootNode`.
+   *
+   * @param rootNode node to start searching from. parents/siblings of this node will be ignored
+   * @param offset the offset of the symbol from the start of the document
+   * @param condition the condition to check if a node is "good"
+   * @returns the node at the position, or `undefined` if none was found
+   */
+  private findNodeAtPosition(
+    rootNode: SyntaxNode,
+    offset: number,
+    condition: (node: SyntaxNode) => boolean,
+  ): SyntaxNode | undefined {
+    // TODO: find the deepest node. findFirst doesn't work (maybe?)
+    const hoveredNode = TreeSitterUtil.findFirst(rootNode, (node) => {
+      const isInNode = offset >= node.startIndex && offset <= node.endIndex;
+      return isInNode && condition(node);
+    });
+
+    return hoveredNode ?? undefined;
   }
 }

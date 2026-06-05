@@ -56,6 +56,7 @@ describe('nodeToSymbolInformation', () => {
   it('type to TypeParameter', async () => {
     const parser = await initializeParser();
     const tree = parser.parse('type Temperature = Real(unit = "K ");');
+    assert.ok(tree, 'parser.parse returned null');
 
     const classNode = tree.rootNode
       .childForFieldName('storedDefinitions')!
@@ -71,6 +72,7 @@ describe('getAllDeclarationsInTree', () => {
   it('Definitions and types', async () => {
     const parser = await initializeParser();
     const tree = parser.parse(modelicaTestString);
+    assert.ok(tree, 'parser.parse returned null');
     const symbols = getAllDeclarationsInTree(tree, 'file.mo');
 
     const definitions: string[] = [];

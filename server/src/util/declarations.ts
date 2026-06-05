@@ -39,7 +39,7 @@
  * ------------------------------------------------------------------------------------------ */
 
 import * as LSP from 'vscode-languageserver/node';
-import * as Parser from 'web-tree-sitter';
+import { Tree, Node as SyntaxNode } from 'web-tree-sitter';
 
 import * as TreeSitterUtil from './tree-sitter';
 
@@ -52,13 +52,13 @@ export function getLocalDeclarations({
   node,
   uri,
 }: {
-  node: Parser.SyntaxNode | null
+  node: SyntaxNode | null
   uri: string
 }): Declarations {
   const declarations: Declarations = {};
 
   // Bottom up traversal to capture all local and scoped declarations
-  const walk = (node: Parser.SyntaxNode | null) => {
+  const walk = (node: SyntaxNode | null) => {
     if (node) {
       for (const childNode of node.children) {
         let symbol: LSP.SymbolInformation | null = null;
@@ -98,7 +98,7 @@ export function getLocalDeclarations({
  * @param uri   The document's uri.
  * @returns     Symbol information for all declarations.
  */
-export function getAllDeclarationsInTree(tree: Parser.Tree, uri: string): LSP.SymbolInformation[] {
+export function getAllDeclarationsInTree(tree: Tree, uri: string): LSP.SymbolInformation[] {
   const symbols: LSP.SymbolInformation[] = [];
 
   TreeSitterUtil.forEach(tree.rootNode, (node) => {
@@ -119,7 +119,7 @@ export function getAllDeclarationsInTree(tree: Parser.Tree, uri: string): LSP.Sy
  * @returns     Symbol information from node.
  */
 export function nodeToSymbolInformation(
-  node: Parser.SyntaxNode,
+  node: SyntaxNode,
   uri: string,
 ): LSP.SymbolInformation | null {
   const named = node.firstNamedChild;
@@ -156,7 +156,7 @@ export function nodeToSymbolInformation(
  * @returns     LSP symbol information for definition.
  */
 function getDeclarationSymbolFromNode(
-  node: Parser.SyntaxNode,
+  node: SyntaxNode,
   uri: string,
 ): LSP.SymbolInformation | null {
   if (TreeSitterUtil.isDefinition(node)) {
@@ -172,7 +172,7 @@ function getDeclarationSymbolFromNode(
  * @param node Node containing class_definition
  * @returns Symbol kind or `undefined`.
  */
-function getKind(node: Parser.SyntaxNode): LSP.SymbolKind | undefined {
+function getKind(node: SyntaxNode): LSP.SymbolKind | undefined {
   const classPrefixes = TreeSitterUtil.getClassPrefixes(node)?.split(/\s+/);
   if (classPrefixes === undefined) {
     return undefined;

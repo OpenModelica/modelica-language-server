@@ -15,12 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup npm
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org/
 
       - name: Install X server
@@ -44,16 +44,32 @@ jobs:
         run: |
           Xvfb -ac :99 -screen 0 1280x1024x16 &
           export DISPLAY=:99
-          npm run test
+          npm run test:e2e
 
       - name: Package Extension
         run: npx vsce package
 
       - name: Archive vsix package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: modelica-language-server.vsix
           path: modelica-language-server-*.vsix
+
+      - name: Pack server npm package
+        working-directory: server
+        run: npm pack
+
+      - name: Stage server release files
+        run: |
+          mkdir server-release
+          cp server/openmodelica-modelica-language-server-*.tgz server-release/
+          cp server/src/tree-sitter-modelica.wasm server-release/
+
+      - name: Archive server release files
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-release
+          path: server-release/
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -61,16 +77,45 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+
+      - uses: actions/download-artifact@v8
         with:
           name: modelica-language-server.vsix
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: server-release
+          path: server-release/
+
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             modelica-language-server-*.vsix
+            server-release/openmodelica-modelica-language-server-*.tgz
+            server-release/tree-sitter-modelica.wasm
           fail_on_unmatched_files: true
           generate_release_notes: true
           append_body: true
+
+      - name: Publish to Visual Studio Marketplace
+        if: always()
+        run: |
+          npx vsce publish -i $(ls modelica-language-server-*.vsix) -p ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        if: always()
+        run: |
+          npx ovsx publish $(ls modelica-language-server-*.vsix) -p ${{ secrets.OPEN_VSX_TOKEN }}
+
+      - name: Publish to npm
+        if: always()
+        run: |
+          npm publish server-release/openmodelica-modelica-language-server-*.tgz --access public

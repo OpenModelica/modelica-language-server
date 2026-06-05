@@ -2,8 +2,8 @@
   "name": "modelica-language-server",
   "displayName": "Modelica Language Server",
   "description": "[Experimental] Modelica language server",
-  "version": "0.1.0",
-  "author": "Andreas Heuermann, Osman Karabel",
+  "version": "0.2.2",
+  "author": "Andreas Heuermann, Osman Karabel, Evan Hedbor, PaddiM8",
   "license": "OSMC-PL-1-8",
   "repository": {
     "type": "git",
@@ -15,11 +15,12 @@
   ],
   "keywords": [
     "modelica",
-    "language",
-    "language-server"
+    "language-server",
+    "lsp",
+    "openmodelica"
   ],
   "homepage": "https://github.com/OpenModelica/modelica-language-server",
-  "icon": "images/Modelica_Language_marging.jpg",
+  "icon": "images/Modelica_Language_margin.jpg",
   "bugs": "https://github.com/OpenModelica/modelica-language-server/issues",
   "engines": {
     "vscode": "^1.75.0"
@@ -29,6 +30,20 @@
   ],
   "main": "./out/client",
   "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "Modelica Language Server",
+      "properties": {
+        "modelica.libraries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "List of paths to Modelica library root directories to load on startup."
+        }
+      }
+    },
     "languages": [
       {
         "id": "modelica",
@@ -50,19 +65,32 @@
     "test-compile": "tsc -b ./",
     "lint": "eslint ./client/src ./server/src --ext .ts,.tsx",
     "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
-    "test": "npm run test-compile && sh ./scripts/e2e.sh",
-    "test:server": "cd server && npx mocha -r ts-node/register src/test/**/*.test.ts src/util/test/**/*.test.ts",
-    "all": "npm run postinstall && npm run esbuild && npm run lint && npm run test:server && npm run test && npm run vscode:prepublish"
+    "test:e2e": "run-script-os",
+    "test:e2e:win32": "npm run test-compile && powershell -File ./scripts/e2e.ps1",
+    "test:e2e:default": "npm run test-compile && sh ./scripts/e2e.sh",
+    "test:server": "cd server && npx mocha --require $(node -e \"process.stdout.write(require.resolve('tsx/cjs'))\") src/test/**/*.test.ts src/project/test/**/*.test.ts src/util/test/**/*.test.ts src/analysis/test/**/*.test.ts",
+    "all": "npm run postinstall && npm run esbuild && npm run lint && npm run test:server && npm run test:e2e && npm run vscode:prepublish",
+    "version:patch": "npm version patch --no-git-tag-version && npm --prefix ./client version patch --no-git-tag-version && npm --prefix ./server version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version && npm --prefix ./client version minor --no-git-tag-version && npm --prefix ./server version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version && npm --prefix ./client version major --no-git-tag-version && npm --prefix ./server version major --no-git-tag-version"
+  },
+  "overrides": {
+    "diff": "^9.0.0",
+    "serialize-javascript": "^7.0.5"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.6",
-    "@types/node": "^20.10.4",
-    "@typescript-eslint/eslint-plugin": "^6.13.2",
-    "@typescript-eslint/parser": "^6.13.2",
-    "esbuild": "^0.20.0",
-    "eslint": "^8.55.0",
-    "mocha": "^10.2.0",
-    "ts-node": "^10.9.1",
-    "typescript": "^5.3.3"
+    "@eslint/js": "^10.0.1",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^25.9.1",
+    "@typescript-eslint/eslint-plugin": "^8.60.1",
+    "@typescript-eslint/parser": "^8.60.1",
+    "esbuild": "^0.28.0",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
+    "mocha": "^11.7.6",
+    "run-script-os": "^1.1.6",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.0",
+    "typescript": "^6.0.3"
   }
 }

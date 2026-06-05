@@ -35,42 +35,17 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { languages, workspace, ExtensionContext, TextDocument } from 'vscode';
+import { workspace, ExtensionContext } from 'vscode';
 import {
   LanguageClient,
   LanguageClientOptions,
   ServerOptions,
   TransportKind,
 } from 'vscode-languageclient/node';
-import { getFileExtension, getLanguage } from './getLanguage';
 
 let client: LanguageClient;
 
 export function activate(context: ExtensionContext) {
-  // Register event listener to set language for '.mo' files.
-  const checkedFiles: { [id: string]: boolean } = {};
-  workspace.onDidOpenTextDocument((document: TextDocument) => {
-    if (checkedFiles[document.fileName]) {
-      return;
-    }
-
-    checkedFiles[document.fileName] = true;
-    if (getFileExtension(document) == '.mo') {
-      const lang = getLanguage(document);
-
-      switch (lang) {
-        case 'modelica':
-          languages.setTextDocumentLanguage(document, 'modelica');
-          break;
-        case 'metamodelica':
-          languages.setTextDocumentLanguage(document, 'metamodelica');
-          break;
-        default:
-          break;
-      }
-    }
-  });
-
   // The server is implemented in node, point to packed module
   const serverModule = context.asAbsolutePath(path.join('out', 'server.js'));
   if (!fs.existsSync(serverModule)) {
@@ -99,6 +74,9 @@ export function activate(context: ExtensionContext) {
     synchronize: {
       // Notify the server about file changes to '.clientrc files contained in the workspace
       fileEvents: workspace.createFileSystemWatcher('**/.clientrc'),
+    },
+    initializationOptions: {
+      libraries: workspace.getConfiguration('modelica').get<string[]>('libraries', []),
     },
   };
 

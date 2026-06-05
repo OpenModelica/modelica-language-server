@@ -41,11 +41,13 @@
 
 import * as LSP from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import url from 'node:url';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 import { initializeParser } from './parser';
 import Analyzer from './analyzer';
-import { extractHoverInformation } from './util/hoverUtil';
-import { logger, setLogConnection, setLogLevel } from './util/logger';
+import { logger, setLoggerOptions } from './util/logger';
 
 /**
  * ModelicaServer collection all the important bits and bobs.
@@ -68,20 +70,46 @@ export class ModelicaServer {
 
   public static async initialize(
     connection: LSP.Connection,
-    { capabilities }: LSP.InitializeParams,
+    { capabilities, workspaceFolders, initializationOptions }: LSP.InitializeParams,
   ): Promise<ModelicaServer> {
     // Initialize logger
-    setLogConnection(connection);
-    setLogLevel('debug');
+    setLoggerOptions({
+      connection,
+      logLevel: 'debug',
+    });
     logger.debug('Initializing...');
 
     const parser = await initializeParser();
     const analyzer = new Analyzer(parser);
+    if (workspaceFolders != null) {
+      for (const workspace of workspaceFolders) {
+        await analyzer.loadLibrary(workspace.uri, true);
+      }
+    }
 
-    const server = new ModelicaServer(analyzer, capabilities, connection);
+    const configuredLibraries = [
+      ...(Array.isArray(
+        (initializationOptions as { modelicaPath?: unknown } | undefined)?.modelicaPath,
+      )
+        ? (initializationOptions as { modelicaPath: unknown[] }).modelicaPath.filter(
+            (value): value is string => typeof value === 'string' && value.length > 0,
+          )
+        : []),
+      ...(Array.isArray((initializationOptions as { libraries?: unknown } | undefined)?.libraries)
+        ? (initializationOptions as { libraries: unknown[] }).libraries.filter(
+            (value): value is string => typeof value === 'string' && value.length > 0,
+          )
+        : []),
+    ];
+
+    for (const libraryPath of configuredLibraries) {
+      const libraryUri = url.pathToFileURL(path.resolve(libraryPath)).toString();
+      logger.debug(`Loading configured library '${libraryPath}'`);
+      await analyzer.loadLibrary(libraryUri, false);
+    }
 
     logger.debug('Initialized');
-    return server;
+    return new ModelicaServer(analyzer, capabilities, connection);
   }
 
   /**
@@ -89,13 +117,21 @@ export class ModelicaServer {
    */
   public capabilities(): LSP.ServerCapabilities {
     return {
-      textDocumentSync: LSP.TextDocumentSyncKind.Full,
       completionProvider: undefined,
+      declarationProvider: true,
+      definitionProvider: true,
       hoverProvider: true,
       signatureHelpProvider: undefined,
       documentSymbolProvider: true,
       colorProvider: false,
       semanticTokensProvider: undefined,
+      textDocumentSync: LSP.TextDocumentSyncKind.Incremental,
+      workspace: {
+        workspaceFolders: {
+          supported: true,
+          changeNotifications: true,
+        },
+      },
     };
   }
 
@@ -105,42 +141,138 @@ export class ModelicaServer {
    * @param connection
    */
   public register(connection: LSP.Connection): void {
-    let currentDocument: TextDocument | null = null;
-    let initialized = false;
-
     // Make the text document manager listen on the connection
     // for open, change and close text document events
     this.#documents.listen(this.#connection);
 
-    // The content of a text document has changed. This event is emitted
-    // when the text document first opened or when its content has changed.
-    this.#documents.onDidChangeContent(({ document }) => {
-      logger.debug('onDidChangeContent');
-
-      // We need to define some timing to wait some time or until whitespace is typed
-      // to update the tree or we are doing this on every key stroke
-
-      currentDocument = document;
-      if (initialized) {
-        this.analyzeDocument(document);
-      }
-    });
-
+    connection.onInitialized(this.onInitialized.bind(this));
+    connection.onShutdown(this.onShutdown.bind(this));
+    connection.onDidChangeTextDocument(this.onDidChangeTextDocument.bind(this));
+    connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
+    connection.onDeclaration(this.onDeclaration.bind(this));
+    connection.onDefinition(this.onDefinition.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
     connection.onHover(this.onHover.bind(this));
-
-    connection.onInitialized(async () => {
-      initialized = true;
-      if (currentDocument) {
-        // If we already have a document, analyze it now that we're initialized
-        // and the linter is ready.
-        this.analyzeDocument(currentDocument);
-      }
-    });
   }
 
-  private async analyzeDocument(document: TextDocument) {
-    this.#analyzer.analyze(document);
+  private async onInitialized(): Promise<void> {
+    logger.debug('onInitialized');
+    await connection.client.register(
+      new LSP.ProtocolNotificationType('workspace/didChangeWatchedFiles'),
+      {
+        watchers: [
+          {
+            globPattern: '**/*.{mo,mos}',
+          },
+        ],
+      },
+    );
+
+    // If we opened a project, analyze it now that we're initialized
+    // and the linter is ready.
+
+    // TODO: analysis
+  }
+
+  private async onShutdown(): Promise<void> {
+    logger.debug('onShutdown');
+  }
+
+  private async onDidChangeTextDocument(params: LSP.DidChangeTextDocumentParams): Promise<void> {
+    logger.debug('onDidChangeTextDocument');
+    for (const change of params.contentChanges) {
+      const range = 'range' in change ? change.range : undefined;
+      await this.#analyzer.updateDocument(params.textDocument.uri, change.text, range);
+    }
+  }
+
+  private async onDidChangeWatchedFiles(params: LSP.DidChangeWatchedFilesParams): Promise<void> {
+    logger.debug('onDidChangeWatchedFiles: ' + JSON.stringify(params, undefined, 4));
+
+    for (const change of params.changes) {
+      switch (change.type) {
+        case LSP.FileChangeType.Created:
+          await this.#analyzer.addDocument(change.uri);
+          break;
+        case LSP.FileChangeType.Changed: {
+          // TODO: incremental?
+          const path = url.fileURLToPath(change.uri);
+          const content = await fs.readFile(path, 'utf-8');
+          await this.#analyzer.updateDocument(change.uri, content);
+          break;
+        }
+        case LSP.FileChangeType.Deleted: {
+          this.#analyzer.removeDocument(change.uri);
+          break;
+        }
+      }
+    }
+  }
+
+  // TODO: We currently treat goto declaration and goto definition the same,
+  //       but there are probably some differences we need to handle.
+  //
+  // 1. inner/outer variables. Modelica allows the user to redeclare variables
+  //    from enclosing classes to use them in inner classes. Goto Declaration
+  //    should go to whichever declaration is in scope, while Goto Definition
+  //    should go to the `outer` declaration. In the following example:
+  //
+  //        model Outer
+  //          model Inner
+  //            inner Real shared;
+  //          equation
+  //            shared = ...;             (A)
+  //          end Inner;
+  //          outer Real shared = 0;
+  //        equation
+  //          shared = ...;               (B)
+  //        end Outer;
+  //
+  //   +-----+-------------+------------+
+  //   | Ref | Declaration | Definition |
+  //   +-----+-------------+------------+
+  //   |  A  |    inner    |   outer    |
+  //   |  B  |    outer    |   outer    |
+  //   +-----+-------------+------------+
+  //
+  // 2. extends_clause is weird. This is a valid class:
+  //
+  //        class extends Foo;
+  //        end Foo;
+  //
+  //    What does this even mean? Is this a definition of Foo or a redeclaration of Foo?
+  //
+  // 3. Import aliases. Should this be considered to be a declaration of `Frobnicator`?
+  //
+  //        import Frobnicator = Foo.Bar.Baz;
+  //
+
+  private async onDeclaration(params: LSP.DeclarationParams): Promise<LSP.LocationLink[]> {
+    logger.debug('onDeclaration');
+
+    const locationLink = await this.#analyzer.findDeclaration(
+      params.textDocument.uri,
+      params.position,
+    );
+    if (locationLink == null) {
+      return [];
+    }
+
+    return [locationLink];
+  }
+
+  private async onDefinition(params: LSP.DefinitionParams): Promise<LSP.LocationLink[]> {
+    logger.debug('onDefinition');
+
+    const locationLink = await this.#analyzer.findDeclaration(
+      params.textDocument.uri,
+      params.position,
+    );
+    if (locationLink == null) {
+      return [];
+    }
+
+    return [locationLink];
   }
 
   // ==============================
@@ -153,55 +285,25 @@ export class ModelicaServer {
    * @param symbolParams  Document symbols of given text document.
    * @returns             Symbol information.
    */
-  private onDocumentSymbol(symbolParams: LSP.DocumentSymbolParams): LSP.SymbolInformation[] {
+  private async onDocumentSymbol(
+    params: LSP.DocumentSymbolParams,
+  ): Promise<LSP.SymbolInformation[]> {
     // TODO: ideally this should return LSP.DocumentSymbol[] instead of LSP.SymbolInformation[]
     // which is a hierarchy of symbols.
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
     logger.debug(`onDocumentSymbol`);
-    return this.#analyzer.getDeclarationsForUri(symbolParams.textDocument.uri);
+    return this.#analyzer.getDeclarationsForUri(params.textDocument.uri);
   }
 
   /**
    * Provide hover information at given text document position.
    *
-   * @param position  Text document position.
-   * @returns         Hover information.
+   * @param params  Text document position.
+   * @returns       Hover information.
    */
-  private async onHover(
-    position: LSP.TextDocumentPositionParams
-  ): Promise<LSP.Hover | null> {
+  private async onHover(params: LSP.HoverParams): Promise<LSP.Hover | null> {
     logger.debug('onHover');
-
-    const node = this.#analyzer.NodeFromTextPosition(position);
-    if (node === null) {
-      return null;
-    }
-
-    const identifier = node.text.trim();
-    const symbolsMatchingWord = this.#analyzer.getReachableDefinitions(
-      position.textDocument.uri,
-      position.position,
-      identifier);
-    logger.debug('symbolsMatchingWord: ', symbolsMatchingWord);
-    if (symbolsMatchingWord.length == 0) {
-      return null;
-    }
-
-    // TODO: Get node defining symbol and extract hover information of that one.
-    const hoverInfo = extractHoverInformation(node);
-    if (hoverInfo == null) {
-      return null;
-    }
-    logger.debug(hoverInfo);
-
-    const markdown : LSP.MarkupContent = {
-      kind: LSP.MarkupKind.Markdown,
-      value: hoverInfo
-    };
-
-    return {
-      contents: markdown
-    } as LSP.Hover;
+    return this.#analyzer.findHoverInfo(params.textDocument.uri, params.position);
   }
 }
 

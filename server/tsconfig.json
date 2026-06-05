@@ -1,11 +1,13 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
-    "target": "es2020",
+    "module": "Node16",
+    "target": "es2022",
     "lib": [
-      "es2020"
+      "es2022"
     ],
-    "moduleResolution": "node",
+    "types": ["mocha", "node"],
+    "moduleResolution": "node16",
+    "skipLibCheck": true,
     "declaration": true,
     "sourceMap": true,
     "strict": true,
@@ -19,8 +21,6 @@
   ],
   "exclude": [
     "node_modules",
-    ".vscode-test",
-    "src/test",
-    "src/util/test"
+    ".vscode-test"
   ]
 }

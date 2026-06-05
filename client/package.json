@@ -1,9 +1,9 @@
 {
   "name": "modelica-language-server-client",
   "description": "VSCode part of a language server",
-  "author": "Andreas Heuermann",
+  "author": "Andreas Heuermann, Osman Karabel, Evan Hedbor, PaddiM8",
   "license": "OSMC-PL-1-8",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "publisher": "vscode",
   "repository": {
     "type": "git",
@@ -11,13 +11,13 @@
   },
   "engines": {
     "vscode": "^1.75.0",
-    "node": "20"
+    "node": ">=20"
   },
   "dependencies": {
-    "vscode-languageclient": "^8.1.0"
+    "vscode-languageclient": "^10.0.0"
   },
   "devDependencies": {
-    "@types/vscode": "^1.75.1",
-    "@vscode/test-electron": "^2.3.8"
+    "@types/vscode": "^1.120.0",
+    "@vscode/test-electron": "^2.5.2"
   }
 }

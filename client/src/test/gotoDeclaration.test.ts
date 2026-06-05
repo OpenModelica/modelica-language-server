@@ -33,33 +33,29 @@
  *
  */
 
-import * as path from 'path';
-import Mocha from 'mocha';
-import { glob } from 'glob';
+import * as vscode from 'vscode';
+import * as assert from 'assert';
+import { getDocUri, activate } from './helper';
 
-export async function run(): Promise<void> {
-  const mocha = new Mocha({
-    ui: 'tdd',
-    color: true,
-    timeout: 100000,
+suite('Goto Declaration', () => {
+  test('onDeclaration()', async () => {
+    const docUri = getDocUri('MyLibrary.mo');
+    await activate(docUri);
+
+    const position = new vscode.Position(4, 18);
+    const actualLocations = await vscode.commands.executeCommand<vscode.LocationLink[]>(
+      'vscode.executeDeclarationProvider',
+      docUri,
+      position,
+    );
+
+    assert.strictEqual(actualLocations.length, 1);
+
+    const actualLocation = actualLocations[0];
+    assert.strictEqual(actualLocation.targetUri.toString(), docUri.toString());
+    assert.strictEqual(actualLocation.targetRange.start.line, 2);
+    assert.strictEqual(actualLocation.targetRange.start.character, 4);
+    assert.strictEqual(actualLocation.targetRange.end.line, 2);
+    assert.strictEqual(actualLocation.targetRange.end.character, 37);
   });
-
-  const testsRoot = __dirname;
-  const files = await glob('**.test.js', { cwd: testsRoot });
-  files.forEach((f) => mocha.addFile(path.resolve(testsRoot, f)));
-
-  return new Promise((resolve, reject) => {
-    try {
-      mocha.run((failures) => {
-        if (failures > 0) {
-          reject(new Error(`${failures} tests failed.`));
-        } else {
-          resolve();
-        }
-      });
-    } catch (err) {
-      console.error(err);
-      reject(err);
-    }
-  });
-}
+});

@@ -33,32 +33,37 @@
  *
  */
 
-import * as path from 'path';
-import { TextDocument } from 'vscode';
+import * as vscode from 'vscode';
+import * as assert from 'assert';
+import { getDocUri, activate } from './helper';
 
-type LanguageTypes = 'modelica' | 'metamodelica' | 'unknown';
+suite('MSL Library Support', () => {
+  test('go-to-declaration resolves MSL type into MSL directory', async () => {
+    const libraries: string[] =
+      vscode.workspace.getConfiguration('modelica').get('libraries') ?? [];
+    if (libraries.length === 0) {
+      console.log('Skipping MSL test: no modelica.libraries configured');
+      return;
+    }
 
-export function getFileExtension(document: TextDocument): string | undefined {
-  const uri = document.uri;
-  const filePath = uri.fsPath;
-  return path.extname(filePath);
-}
+    const docUri = getDocUri('UseMSL.mo');
+    await activate(docUri);
 
-function hasMetaModelicaKeywords(content: string): boolean {
-  const unionRegex = new RegExp('\\b(uniontype)\\s+(\\w+)\\s*(".*")*');
+    // Line 2: "    Modelica.Units.SI.Voltage v;" — cursor on "Modelica" at column 4
+    const position = new vscode.Position(2, 4);
+    const actualLocations = await vscode.commands.executeCommand<vscode.LocationLink[]>(
+      'vscode.executeDeclarationProvider',
+      docUri,
+      position,
+    );
 
-  return unionRegex.test(content);
-}
+    assert.ok(actualLocations.length > 0, 'Expected at least one declaration location');
 
-/**
- * Check if the text document is a Modelica files, MetaModelica file or other.
- * @param document Text document.
- */
-export function getLanguage(document: TextDocument): LanguageTypes {
-  // Check
-  if (hasMetaModelicaKeywords(document.getText())) {
-    return 'metamodelica';
-  }
-
-  return 'modelica';
-}
+    const targetPath = actualLocations[0].targetUri.fsPath;
+    const mslDir = libraries[0];
+    assert.ok(
+      targetPath.startsWith(mslDir),
+      `Expected declaration to resolve into MSL directory '${mslDir}', got '${targetPath}'`,
+    );
+  });
+});
