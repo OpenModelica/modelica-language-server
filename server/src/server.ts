@@ -83,7 +83,13 @@ export class ModelicaServer {
     const analyzer = new Analyzer(parser);
     if (workspaceFolders != null) {
       for (const workspace of workspaceFolders) {
-        await analyzer.loadLibrary(workspace.uri, true);
+        try {
+          await analyzer.loadLibrary(workspace.uri, true);
+        } catch (err) {
+          logger.error(
+            `Failed to load workspace '${workspace.uri}': ${err instanceof Error ? err.message : err}`,
+          );
+        }
       }
     }
 
@@ -105,7 +111,20 @@ export class ModelicaServer {
     for (const libraryPath of configuredLibraries) {
       const libraryUri = url.pathToFileURL(path.resolve(libraryPath)).toString();
       logger.debug(`Loading configured library '${libraryPath}'`);
-      await analyzer.loadLibrary(libraryUri, false);
+      try {
+        const loaded = await analyzer.loadLibrary(libraryUri, false);
+        if (!loaded) {
+          const message =
+            `Could not load Modelica library '${libraryPath}': the path does not exist or has no ` +
+            `'package.mo'. Remove or fix this entry in the "modelica.libraries" setting to stop loading it.`;
+          logger.warn(message);
+          connection.window.showWarningMessage(message);
+        }
+      } catch (err) {
+        logger.error(
+          `Failed to load configured library '${libraryPath}': ${err instanceof Error ? err.message : err}`,
+        );
+      }
     }
 
     logger.debug('Initialized');
