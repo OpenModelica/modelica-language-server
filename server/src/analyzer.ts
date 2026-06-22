@@ -101,7 +101,7 @@ export default class Analyzer {
     // TODO: go deeper... something like `TreeSitterUtil.forEach` but for files
     //       would be good here
     for (const nestedRelative of await fs.readdir(libraryPath)) {
-      const nested = path.resolve(nestedRelative);
+      const nested = path.resolve(libraryPath, nestedRelative);
       if (!isLibrary(nested)) {
         continue;
       }

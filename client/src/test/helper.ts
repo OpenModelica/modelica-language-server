@@ -57,8 +57,37 @@ export async function activate(docUri: vscode.Uri) {
   }
 }
 
-async function sleep(ms: number) {
+export async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Repeatedly run a VS Code command until it returns a non-empty result.
+ *
+ * The language server initializes and parses documents asynchronously, so a
+ * single fixed `sleep` after activation is racy: on slower machines (e.g. CI)
+ * the provider can still return an empty result. Polling avoids that flakiness
+ * while keeping fast machines fast.
+ *
+ * @param command         Command id to execute, e.g. `vscode.executeDeclarationProvider`.
+ * @param args            Arguments forwarded to the command.
+ * @param timeoutMs       Maximum time to keep retrying.
+ * @param intervalMs      Delay between attempts.
+ * @returns The first non-empty result, or the last (empty) result on timeout.
+ */
+export async function executeProviderUntilResult<T extends { length: number }>(
+  command: string,
+  args: unknown[],
+  timeoutMs = 20000,
+  intervalMs = 250,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let result = await vscode.commands.executeCommand<T>(command, ...args);
+  while ((!result || result.length === 0) && Date.now() < deadline) {
+    await sleep(intervalMs);
+    result = await vscode.commands.executeCommand<T>(command, ...args);
+  }
+  return result;
 }
 
 export const getDocPath = (p: string) => {

@@ -36,7 +36,7 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as assert from 'assert';
-import { getDocUri, getDocPath, activate } from './helper';
+import { getDocUri, getDocPath, activate, executeProviderUntilResult } from './helper';
 
 suite('onHover information', async () => {
   test('Step', async () => {
@@ -72,7 +72,10 @@ async function testOnHover(
   await activate(uri);
 
   // Execute `vscode.executeHoverProvider` to execute all hover providers
-  const actualHoverInstances = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", uri, position);
+  const actualHoverInstances = await executeProviderUntilResult<vscode.Hover[]>(
+    "vscode.executeHoverProvider",
+    [uri, position],
+  );
 
   assertHoverInstancesEqual(expectedHoverInstances, actualHoverInstances);
 }
