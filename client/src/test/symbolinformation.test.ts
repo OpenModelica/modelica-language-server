@@ -35,7 +35,7 @@
 
 import * as vscode from 'vscode';
 import * as assert from 'assert';
-import { getDocUri, activate } from './helper';
+import { getDocUri, activate, executeProviderUntilResult } from './helper';
 
 suite('Symbol Information', () => {
   const docUri = getDocUri('MyLibrary.mo');
@@ -71,9 +71,9 @@ async function testSymbolInformation(
   await activate(docUri);
 
   // Execute `vscode.executeDocumentSymbolProvider` to get file outline
-  const actualSymbolInformation = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+  const actualSymbolInformation = await executeProviderUntilResult<vscode.DocumentSymbol[]>(
     'vscode.executeDocumentSymbolProvider',
-    docUri,
+    [docUri],
   );
 
   assertDocumentSymbolsEqual(expectedDocumentSymbols, actualSymbolInformation);

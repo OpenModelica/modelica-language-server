@@ -41,8 +41,19 @@ export let editor: vscode.TextEditor;
 export let documentEol: string;
 export let platformEol: string;
 
+
 /**
- * Activates the OpenModelica.modelica-language-server extension
+ * Activates the OpenModelica.modelica-language-server extension and opens the
+ * given document.
+ *
+ * This resolves once the extension is activated and the document is open, but
+ * NOT once the language server has finished initializing and parsing it (that
+ * happens asynchronously). Callers must therefore not assume the server is
+ * ready when this returns: run provider commands through
+ * {@link executeProviderUntilResult}, which polls until a non-empty result is
+ * available instead of relying on a fixed delay.
+ *
+ * @param docUri  The document to open in the editor.
  */
 export async function activate(docUri: vscode.Uri): Promise<void> {
   // The extensionId is `publisher.name` from package.json
@@ -54,14 +65,40 @@ export async function activate(docUri: vscode.Uri): Promise<void> {
   try {
     doc = await vscode.workspace.openTextDocument(docUri);
     editor = await vscode.window.showTextDocument(doc);
-    await sleep(5000); // Wait for server activation
+    // No fixed wait for server activation here: callers use
+    // `executeProviderUntilResult`, which polls until the server is ready.
   } catch (e) {
     console.error(e);
   }
 }
 
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Repeatedly run a VS Code command until it returns a non-empty result.
+ *
+ * The language server initializes and parses documents asynchronously, so a
+ * single fixed delay after activation is racy: on slower machines (e.g. CI)
+ * the provider can still return an empty result. Polling avoids that flakiness
+ * while keeping fast machines fast.
+ *
+ * @param command         Command id to execute, e.g. `vscode.executeDeclarationProvider`.
+ * @param args            Arguments forwarded to the command.
+ * @param timeoutMs       Maximum time to keep retrying.
+ * @param intervalMs      Delay between attempts.
+ * @returns The first non-empty result, or the last (empty) result on timeout.
+ */
+export async function executeProviderUntilResult<T extends { length: number }>(
+  command: string,
+  args: unknown[],
+  timeoutMs = 20000,
+  intervalMs = 250,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let result = await vscode.commands.executeCommand<T>(command, ...args);
+  while ((!result || result.length === 0) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    result = await vscode.commands.executeCommand<T>(command, ...args);
+  }
+  return result;
 }
 
 export const getDocPath = (p: string): string => {

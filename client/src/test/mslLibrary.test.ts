@@ -35,7 +35,7 @@
 
 import * as vscode from 'vscode';
 import * as assert from 'assert';
-import { getDocUri, activate } from './helper';
+import { getDocUri, activate, executeProviderUntilResult } from './helper';
 
 suite('MSL Library Support', () => {
   test('go-to-declaration resolves MSL type into MSL directory', async () => {
@@ -51,10 +51,9 @@ suite('MSL Library Support', () => {
 
     // Line 2: "    Modelica.Units.SI.Voltage v;" — cursor on "Modelica" at column 4
     const position = new vscode.Position(2, 4);
-    const actualLocations = await vscode.commands.executeCommand<vscode.LocationLink[]>(
+    const actualLocations = await executeProviderUntilResult<vscode.LocationLink[]>(
       'vscode.executeDeclarationProvider',
-      docUri,
-      position,
+      [docUri, position],
     );
 
     assert.ok(actualLocations.length > 0, 'Expected at least one declaration location');

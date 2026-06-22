@@ -23,6 +23,12 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org/
 
+      - name: Cache VS Code test downloads
+        uses: actions/cache@v4
+        with:
+          path: .vscode-test
+          key: vscode-test-${{ runner.os }}-stable
+
       - name: Install X server
         run: |
           sudo apt-get update
