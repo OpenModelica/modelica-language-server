@@ -40,6 +40,7 @@ import path from 'node:path';
 import { ModelicaLibrary } from './library';
 import { ModelicaDocument } from './document';
 import { logger } from '../util/logger';
+import * as TreeSitterUtil from '../util/tree-sitter';
 
 /** Options for {@link ModelicaProject.getDocument} */
 export interface GetDocumentOptions {
@@ -139,15 +140,19 @@ export class ModelicaProject {
 
     // If the document doesn't belong to a library, it could still be loaded
     // as a standalone document if it has an empty or non-existent within clause
-    const standaloneName = path.basename(documentPath).split('.')[0];
+    const fallbackName = path.basename(documentPath).split('.')[0];
     const standaloneLibrary = new ModelicaLibrary(
       this,
       path.dirname(documentPath),
       false,
-      standaloneName,
+      fallbackName,
     );
     const document = await ModelicaDocument.load(this, standaloneLibrary, documentPath);
     if (document.within.length === 0) {
+      // Use the declared class name as the library name so resolution can find it by class name.
+      const classNames = TreeSitterUtil.getDeclaredIdentifiers(document.tree.rootNode);
+      standaloneLibrary.rename(classNames[0] ?? fallbackName);
+      standaloneLibrary.documents.set(documentPath, document);
       this.addLibrary(standaloneLibrary);
       logger.debug(`Added document: ${documentPath}`);
       return document;

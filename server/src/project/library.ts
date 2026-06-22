@@ -44,7 +44,7 @@ export class ModelicaLibrary {
   readonly #project: ModelicaProject;
   readonly #documents: Map<string, ModelicaDocument>;
   readonly #isWorkspace: boolean;
-  readonly #name: string;
+  #name: string;
   #path: string;
 
   public constructor(
@@ -108,6 +108,10 @@ export class ModelicaLibrary {
 
   public get name(): string {
     return this.#name;
+  }
+
+  public rename(newName: string): void {
+    this.#name = newName;
   }
 
   public get path(): string {

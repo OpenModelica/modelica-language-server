@@ -441,11 +441,39 @@ function resolveAbsoluteReference(
   logger.debug(`Resolving ${reference}`);
 
   logger.debug(project.libraries.map((x) => x.name + ' | ' + x.path).join('\n\t'));
-  const library = project.libraries.find((lib) => lib.name === reference.symbols[0]);
-  if (library == null) {
+
+  // Multiple libraries may share the same name (e.g. a standalone file and a
+  // directory package with the same top-level class). Try each of them until
+  // one resolves the full reference chain.
+  const libraries = project.libraries.filter((lib) => lib.name === reference.symbols[0]);
+  if (libraries.length === 0) {
     logger.debug(`Couldn't find library: ${reference.symbols[0]}`);
     return null;
   }
+
+  for (const library of libraries) {
+    const resolved = resolveReferenceInLibrary(library, reference);
+    if (resolved != null) {
+      logger.debug(`Resolved symbol ${resolved}`);
+      return resolved;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Attempts to resolve an absolute reference chain within a single library.
+ *
+ * @param library the library to search
+ * @param reference an absolute reference
+ * @returns a resolved reference, or `null` if the chain could not be resolved
+ *     in this library
+ */
+function resolveReferenceInLibrary(
+  library: ModelicaLibrary,
+  reference: UnresolvedAbsoluteReference,
+): ResolvedReference | null {
 
   let alreadyResolved: ResolvedReference | null = null;
   for (let i = 0; i < reference.symbols.length; i++) {
