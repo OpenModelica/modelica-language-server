@@ -35,7 +35,7 @@
 
 import * as vscode from 'vscode';
 import * as assert from 'assert';
-import { getDocUri, activate } from './helper';
+import { getDocUri, activate, executeProviderUntilResult } from './helper';
 
 suite('Goto Declaration', () => {
   test('onDeclaration()', async () => {
@@ -43,10 +43,9 @@ suite('Goto Declaration', () => {
     await activate(docUri);
 
     const position = new vscode.Position(4, 18);
-    const actualLocations = await vscode.commands.executeCommand<vscode.LocationLink[]>(
+    const actualLocations = await executeProviderUntilResult<vscode.LocationLink[]>(
       'vscode.executeDeclarationProvider',
-      docUri,
-      position,
+      [docUri, position],
     );
 
     assert.strictEqual(actualLocations.length, 1);
