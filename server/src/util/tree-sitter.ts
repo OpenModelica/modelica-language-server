@@ -43,7 +43,6 @@ import { Node as SyntaxNode, Point } from 'web-tree-sitter';
 import * as LSP from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-import { logger } from './logger';
 /**
  * Recursively iterate over all nodes in a tree.
  *
