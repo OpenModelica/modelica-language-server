@@ -41,7 +41,7 @@ module.exports = [
       'semi': [2, 'always'],
       'no-undef': 0,              // TypeScript's type checker handles this
       'no-redeclare': 0,          // @typescript-eslint/no-redeclare handles TS overloads
-      'no-unused-private-class-members': 0,
+      'no-unused-private-class-members': 1,
       '@typescript-eslint/no-unused-vars': [1, {
         'argsIgnorePattern': '^_',
         'varsIgnorePattern': '^_',
@@ -50,7 +50,7 @@ module.exports = [
       '@typescript-eslint/no-explicit-any': 1,
       '@typescript-eslint/explicit-module-boundary-types': 1,
       '@typescript-eslint/no-non-null-assertion': 1,
-      '@typescript-eslint/no-unused-expressions': 0,
+      '@typescript-eslint/no-unused-expressions': 1,
     },
   },
 ];
