@@ -133,7 +133,7 @@ export class ModelicaServer {
       completionProvider: undefined,
       declarationProvider: true,
       definitionProvider: true,
-      hoverProvider: false,
+      hoverProvider: true,
       signatureHelpProvider: undefined,
       documentSymbolProvider: true,
       colorProvider: false,
@@ -148,6 +148,11 @@ export class ModelicaServer {
     };
   }
 
+  /**
+   * Register handlers for the events from the Language Server Protocol
+   *
+   * @param connection
+   */
   public register(connection: LSP.Connection): void {
     // Make the text document manager listen on the connection
     // for open, change and close text document events
@@ -160,6 +165,7 @@ export class ModelicaServer {
     connection.onDeclaration(this.onDeclaration.bind(this));
     connection.onDefinition(this.onDefinition.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
+    connection.onHover(this.onHover.bind(this));
   }
 
   private async onInitialized(): Promise<void> {
@@ -282,11 +288,15 @@ export class ModelicaServer {
     return [locationLink];
   }
 
+  // ==============================
+  // Language server event handlers
+  // ==============================
+
   /**
    * Provide symbols defined in document.
    *
-   * @param params  Unused.
-   * @returns       Symbol information.
+   * @param symbolParams  Document symbols of given text document.
+   * @returns             Symbol information.
    */
   private async onDocumentSymbol(
     params: LSP.DocumentSymbolParams,
@@ -296,6 +306,17 @@ export class ModelicaServer {
     // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
     logger.debug(`onDocumentSymbol`);
     return this.#analyzer.getDeclarationsForUri(params.textDocument.uri);
+  }
+
+  /**
+   * Provide hover information at given text document position.
+   *
+   * @param params  Text document position.
+   * @returns       Hover information.
+   */
+  private async onHover(params: LSP.HoverParams): Promise<LSP.Hover | null> {
+    logger.debug('onHover');
+    return this.#analyzer.findHoverInfo(params.textDocument.uri, params.position);
   }
 }
 

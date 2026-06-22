@@ -57,6 +57,7 @@ import { uriToPath } from './util';
 import * as TreeSitterUtil from './util/tree-sitter';
 import { getAllDeclarationsInTree } from './util/declarations';
 import { logger } from './util/logger';
+import { extractHoverInformation } from './util/hoverUtil';
 
 export default class Analyzer {
   #project: ModelicaProject;
@@ -228,6 +229,74 @@ export default class Analyzer {
       }
       return null;
     }
+  }
+
+  /**
+   * Returns hover information for the symbol at the given position.
+   *
+   * @param uri the opened document
+   * @param position the cursor position
+   * @returns Markdown hover content, or `null` if not found.
+   */
+  public async findHoverInfo(
+    uri: LSP.DocumentUri,
+    position: LSP.Position,
+  ): Promise<LSP.Hover | null> {
+    const path = uriToPath(uri);
+    const document = await this.#project.getDocument(path);
+    if (!document || !document.tree.rootNode) {
+      return null;
+    }
+
+    const reference = this.getReferenceAt(document, position);
+    if (!reference) {
+      return null;
+    }
+
+    // Try to resolve via the full resolution system (handles external classes, qualified names).
+    try {
+      const result = resolveReference(document.project, reference, 'declaration');
+      if (result?.node.type === 'class_definition') {
+        return this.hoverFromClassDef(result.node);
+      }
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        logger.debug('Caught exception in findHoverInfo: ', e.stack);
+      }
+    }
+
+    // Fallback: search the current document for a matching class definition.
+    // This handles standalone files where the file name differs from the class name.
+    const lastName = reference.symbols[reference.symbols.length - 1];
+    const localClassDef = TreeSitterUtil.findFirst(
+      document.tree.rootNode,
+      (n) => n.type === 'class_definition' && TreeSitterUtil.hasIdentifier(n, lastName),
+    );
+    if (localClassDef) {
+      return this.hoverFromClassDef(localClassDef);
+    }
+
+    return null;
+  }
+
+  /**
+   * Builds a Markdown hover from a class definition node.
+   *
+   * @param classDefNode a `class_definition` syntax node
+   * @returns a Markdown {@link LSP.Hover}, or `null` if no hover information
+   *     could be extracted from the node.
+   */
+  private hoverFromClassDef(classDefNode: SyntaxNode): LSP.Hover | null {
+    const hoverInfo = extractHoverInformation(classDefNode);
+    if (!hoverInfo) {
+      return null;
+    }
+    return {
+      contents: {
+        kind: LSP.MarkupKind.Markdown,
+        value: hoverInfo,
+      } as LSP.MarkupContent,
+    };
   }
 
   /**

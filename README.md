@@ -22,6 +22,10 @@ features:
 
   ![Goto Declaration](images/goto_declaration_demo.png)
 
+- Hover provider for declared symbols.
+
+  ![Hover](images/hover_demo.png)
+
 ## Configuration
 
 ### Loading external Modelica libraries

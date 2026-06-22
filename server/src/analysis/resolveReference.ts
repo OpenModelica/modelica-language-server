@@ -474,7 +474,6 @@ function resolveReferenceInLibrary(
   library: ModelicaLibrary,
   reference: UnresolvedAbsoluteReference,
 ): ResolvedReference | null {
-
   let alreadyResolved: ResolvedReference | null = null;
   for (let i = 0; i < reference.symbols.length; i++) {
     alreadyResolved = resolveNext(library, reference.symbols[i], alreadyResolved);
