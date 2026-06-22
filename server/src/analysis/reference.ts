@@ -34,7 +34,7 @@
  */
 
 import { ModelicaDocument } from '../project/document';
-import { Parser, Node as SyntaxNode } from 'web-tree-sitter';
+import { Node as SyntaxNode } from 'web-tree-sitter';
 
 export type ReferenceKind = 'class' | 'variable';
 

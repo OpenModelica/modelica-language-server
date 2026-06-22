@@ -48,49 +48,6 @@ const isEmpty = (data: string): boolean => typeof data === 'string' && data.trim
 export type GlobalDeclarations = { [word: string]: LSP.SymbolInformation };
 export type Declarations = { [word: string]: LSP.SymbolInformation[] };
 
-export function getLocalDeclarations({
-  node,
-  uri,
-}: {
-  node: SyntaxNode | null
-  uri: string
-}): Declarations {
-  const declarations: Declarations = {};
-
-  // Bottom up traversal to capture all local and scoped declarations
-  const walk = (node: SyntaxNode | null) => {
-    if (node) {
-      for (const childNode of node.children) {
-        let symbol: LSP.SymbolInformation | null = null;
-
-        // local variables
-        if (childNode.type === 'component_reference') {
-          const identifierNode = childNode.children.filter(
-            (child) => child.type === 'IDENT',
-          )[0];
-          if (identifierNode) {
-            symbol = nodeToSymbolInformation(identifierNode, uri);
-          }
-        } else {
-          symbol = getDeclarationSymbolFromNode(childNode, uri);
-        }
-
-        if (symbol) {
-          if (!declarations[symbol.name]) {
-            declarations[symbol.name] = [];
-          }
-          declarations[symbol.name].push(symbol);
-        }
-      }
-
-      walk(node.parent);
-    }
-  };
-  walk(node);
-
-  return declarations;
-}
-
 /**
  * Returns all declarations (functions or variables) from a given tree.
  *

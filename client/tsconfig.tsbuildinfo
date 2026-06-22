@@ -1,1 +1,0 @@
-{"root":["./src/extension.ts","./src/test/gotoDeclaration.test.ts","./src/test/helper.ts","./src/test/index.ts","./src/test/mslLibrary.test.ts","./src/test/onHover.test.ts","./src/test/runTest.ts","./src/test/symbolinformation.test.ts"],"version":"6.0.3"}

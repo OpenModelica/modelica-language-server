@@ -54,23 +54,17 @@ import { logger, setLoggerOptions } from './util/logger';
  */
 export class ModelicaServer {
   #analyzer: Analyzer;
-  #clientCapabilities: LSP.ClientCapabilities;
   #connection: LSP.Connection;
   #documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(TextDocument);
 
-  private constructor(
-    analyzer: Analyzer,
-    clientCapabilities: LSP.ClientCapabilities,
-    connection: LSP.Connection,
-  ) {
+  private constructor(analyzer: Analyzer, connection: LSP.Connection) {
     this.#analyzer = analyzer;
-    this.#clientCapabilities = clientCapabilities;
     this.#connection = connection;
   }
 
   public static async initialize(
     connection: LSP.Connection,
-    { capabilities, workspaceFolders, initializationOptions }: LSP.InitializeParams,
+    { workspaceFolders, initializationOptions }: LSP.InitializeParams,
   ): Promise<ModelicaServer> {
     // Initialize logger
     setLoggerOptions({
@@ -128,7 +122,7 @@ export class ModelicaServer {
     }
 
     logger.debug('Initialized');
-    return new ModelicaServer(analyzer, capabilities, connection);
+    return new ModelicaServer(analyzer, connection);
   }
 
   /**

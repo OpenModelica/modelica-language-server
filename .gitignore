@@ -7,4 +7,5 @@
 modelica-language-server*.vsix
 node_modules/
 out/
+*.tsbuildinfo
 client/testFixture/.vscode/settings.json
