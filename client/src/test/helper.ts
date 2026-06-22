@@ -46,7 +46,10 @@ export let platformEol: string;
  */
 export async function activate(docUri: vscode.Uri): Promise<void> {
   // The extensionId is `publisher.name` from package.json
-  const ext = vscode.extensions.getExtension('OpenModelica.modelica-language-server')!;
+  const ext = vscode.extensions.getExtension('OpenModelica.modelica-language-server');
+  if (!ext) {
+    throw new Error('Could not find OpenModelica.modelica-language-server extension');
+  }
   await ext.activate();
   try {
     doc = await vscode.workspace.openTextDocument(docUri);

@@ -85,8 +85,11 @@ export class ModelicaDocument implements TextDocument {
       const document = TextDocument.create(uri, 'modelica', 0, content);
 
       const tree = project.parser.parse(content);
+      if (!tree) {
+        throw new Error('parser returned no tree');
+      }
 
-      return new ModelicaDocument(project, library, document, tree!);
+      return new ModelicaDocument(project, library, document, tree);
     } catch (err) {
       throw new Error(
         `Failed to load document at '${documentPath}': ${err instanceof Error ? err.message : err}`,
@@ -104,7 +107,11 @@ export class ModelicaDocument implements TextDocument {
   public async update(text: string, range?: LSP.Range): Promise<void> {
     if (range === undefined) {
       TextDocument.update(this.#document, [{ text }], this.version + 1);
-      this.#tree = this.project.parser.parse(text)!;
+      const tree = this.project.parser.parse(text);
+      if (!tree) {
+        throw new Error(`Failed to parse updated document '${this.uri}'`);
+      }
+      this.#tree = tree;
       return;
     }
 
@@ -127,10 +134,14 @@ export class ModelicaDocument implements TextDocument {
     }));
 
     const fullText = this.getText();
-    this.#tree = this.project.parser.parse(
+    const tree = this.project.parser.parse(
       (index: number) => fullText[index] ?? '',
       this.#tree,
-    )!;
+    );
+    if (!tree) {
+      throw new Error(`Failed to parse updated document '${this.uri}'`);
+    }
+    this.#tree = tree;
   }
 
   public getText(range?: LSP.Range | undefined): string {

@@ -58,9 +58,10 @@ describe('nodeToSymbolInformation', () => {
     const tree = parser.parse('type Temperature = Real(unit = "K ");');
     assert.ok(tree, 'parser.parse returned null');
 
-    const classNode = tree.rootNode
-      .childForFieldName('storedDefinitions')!
-      .childForFieldName('classDefinition')!;
+    const storedDefinitions = tree.rootNode.childForFieldName('storedDefinitions');
+    assert.ok(storedDefinitions);
+    const classNode = storedDefinitions.childForFieldName('classDefinition');
+    assert.ok(classNode);
     const symbol = nodeToSymbolInformation(classNode, 'file.mo');
 
     assert.equal(symbol?.name, 'Temperature');

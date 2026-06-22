@@ -49,7 +49,7 @@ module.exports = [
       }],
       '@typescript-eslint/no-explicit-any': 1,
       '@typescript-eslint/explicit-module-boundary-types': 1,
-      '@typescript-eslint/no-non-null-assertion': 0,
+      '@typescript-eslint/no-non-null-assertion': 1,
       '@typescript-eslint/no-unused-expressions': 0,
     },
   },

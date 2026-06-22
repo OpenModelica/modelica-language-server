@@ -271,7 +271,10 @@ export default class Analyzer {
           hoveredType,
           documentOffset,
           (node) => node.type === 'IDENT',
-        )!;
+        );
+        if (!startNode) {
+          return null;
+        }
 
         return new UnresolvedRelativeReference(document, startNode, symbols, 'class');
       }
@@ -297,7 +300,10 @@ export default class Analyzer {
           hoveredComponentReference,
           documentOffset,
           (node) => node.type === 'IDENT',
-        )!;
+        );
+        if (!startNode) {
+          return null;
+        }
 
         return new UnresolvedRelativeReference(document, startNode, symbols, 'variable');
       }

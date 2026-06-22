@@ -296,7 +296,7 @@ function findDeclarationInClass(
       ) as UnresolvedRelativeReference & { kind: 'class' };
     }
 
-    const componentDef = namedElement[0].childForFieldName('componentClause')!;
+    const componentDef = TreeSitterUtil.requireFieldName(namedElement[0], 'componentClause');
 
     // TODO: this handles named_elements but what if it's an import clause?
     return new UnresolvedRelativeReference(
@@ -374,7 +374,7 @@ function resolveImportClause(
 ): ResolveImportClauseResult {
   // imports are always relative according to the grammar
   const importPath = TreeSitterUtil.getTypeSpecifier(
-    importClause.childForFieldName('name')!,
+    TreeSitterUtil.requireFieldName(importClause, 'name'),
   ).symbols;
 
   // wildcard import: import a.b.*;
