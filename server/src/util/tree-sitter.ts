@@ -50,7 +50,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
  * @param node      The node to start iterating from
  * @param callback  The callback to call for each node. Return false to stop following children.
  */
-export function forEach(node: SyntaxNode, callback: (n: SyntaxNode) => void | boolean) {
+export function forEach(node: SyntaxNode, callback: (n: SyntaxNode) => void | boolean): void {
   const followChildren = callback(node) !== false;
   if (followChildren && node.children.length) {
     node.children.forEach((n) => forEach(n, callback));

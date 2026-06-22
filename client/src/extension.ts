@@ -45,7 +45,7 @@ import {
 
 let client: LanguageClient;
 
-export function activate(context: ExtensionContext) {
+export function activate(context: ExtensionContext): void {
   // The server is implemented in node, point to packed module
   const serverModule = context.asAbsolutePath(path.join('out', 'server.js'));
   if (!fs.existsSync(serverModule)) {

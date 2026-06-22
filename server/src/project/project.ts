@@ -64,7 +64,7 @@ export class ModelicaProject {
     return this.#libraries;
   }
 
-  public addLibrary(library: ModelicaLibrary) {
+  public addLibrary(library: ModelicaLibrary): void {
     this.#libraries.push(library);
   }
 
