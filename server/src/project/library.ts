@@ -1,7 +1,7 @@
 /*
  * This file is part of OpenModelica.
  *
- * Copyright (c) 1998-2024, Open Source Modelica Consortium (OSMC),
+ * Copyright (c) 1998-2026, Open Source Modelica Consortium (OSMC),
  * c/o Linköpings universitet, Department of Computer and Information Science,
  * SE-58183 Linköping, Sweden.
  *
@@ -44,7 +44,7 @@ export class ModelicaLibrary {
   readonly #project: ModelicaProject;
   readonly #documents: Map<string, ModelicaDocument>;
   readonly #isWorkspace: boolean;
-  readonly #name: string;
+  #name: string;
   #path: string;
 
   public constructor(
@@ -108,6 +108,10 @@ export class ModelicaLibrary {
 
   public get name(): string {
     return this.#name;
+  }
+
+  public rename(newName: string): void {
+    this.#name = newName;
   }
 
   public get path(): string {

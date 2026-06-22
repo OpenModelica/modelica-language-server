@@ -1,7 +1,7 @@
 /*
  * This file is part of OpenModelica.
  *
- * Copyright (c) 1998-2024, Open Source Modelica Consortium (OSMC),
+ * Copyright (c) 1998-2026, Open Source Modelica Consortium (OSMC),
  * c/o Linköpings universitet, Department of Computer and Information Science,
  * SE-58183 Linköping, Sweden.
  *
@@ -100,7 +100,7 @@ export default class Analyzer {
     // TODO: go deeper... something like `TreeSitterUtil.forEach` but for files
     //       would be good here
     for (const nestedRelative of await fs.readdir(libraryPath)) {
-      const nested = path.resolve(nestedRelative);
+      const nested = path.resolve(libraryPath, nestedRelative);
       if (!isLibrary(nested)) {
         continue;
       }
@@ -326,10 +326,6 @@ export default class Analyzer {
   /**
    * Locates the first node at the given text position that matches the given
    * `condition`, starting from the `rootNode`.
-   *
-   * Note: it is very important to have some kind of condition. If one tries to
-   * just accept the first node at that position, this function will always
-   * return the `rootNode` (or `undefined` if outside the node.)
    *
    * @param rootNode node to start searching from. parents/siblings of this node will be ignored
    * @param offset the offset of the symbol from the start of the document
