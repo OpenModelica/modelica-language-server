@@ -33,7 +33,6 @@
  *
  */
 
-import * as LSP from 'vscode-languageserver';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 

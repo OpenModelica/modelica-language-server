@@ -35,7 +35,6 @@
 
 import { Parser } from 'web-tree-sitter';
 import * as LSP from 'vscode-languageserver';
-import url from 'node:url';
 import path from 'node:path';
 
 import { ModelicaLibrary } from './library';
@@ -65,7 +64,7 @@ export class ModelicaProject {
     return this.#libraries;
   }
 
-  public addLibrary(library: ModelicaLibrary) {
+  public addLibrary(library: ModelicaLibrary): void {
     this.#libraries.push(library);
   }
 

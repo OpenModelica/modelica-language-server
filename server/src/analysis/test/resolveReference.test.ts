@@ -35,7 +35,7 @@
 
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { ModelicaProject, ModelicaLibrary, ModelicaDocument } from '../../project';
+import { ModelicaProject, ModelicaLibrary } from '../../project';
 import { initializeParser } from '../../parser';
 import resolveReference from '../resolveReference';
 import {
@@ -70,7 +70,8 @@ describe('resolveReference', () => {
       resolvedDocument.tree.rootNode,
       (node) =>
         node.type === 'class_definition' && TreeSitterUtil.getIdentifier(node) === 'TestClass',
-    )!;
+    );
+    assert.ok(resolvedNode);
     const resolvedSymbols = ['TestLibrary', 'TestPackage', 'TestClass'];
 
     assert(
@@ -84,14 +85,16 @@ describe('resolveReference', () => {
     const unresolved = new UnresolvedAbsoluteReference(['TestLibrary', 'Constants', 'e']);
     const resolved = resolveReference(project, unresolved, 'declaration');
 
-    const resolvedDocument = (await project.getDocument(CONSTANTS_PATH))!;
+    const resolvedDocument = await project.getDocument(CONSTANTS_PATH);
+    assert.ok(resolvedDocument);
 
     // Get the node declaring `e`
     const resolvedNode = TreeSitterUtil.findFirst(
       resolvedDocument.tree.rootNode,
       (node) =>
         node.type === 'component_clause' && TreeSitterUtil.getDeclaredIdentifiers(node)[0] === 'e',
-    )!;
+    );
+    assert.ok(resolvedNode);
     const resolvedSymbols = ['TestLibrary', 'Constants', 'e'];
 
     assert(
@@ -102,11 +105,13 @@ describe('resolveReference', () => {
   });
 
   it('should resolve relative references to locals', async () => {
-    const document = (await project.getDocument(TEST_CLASS_PATH))!;
+    const document = await project.getDocument(TEST_CLASS_PATH);
+    assert.ok(document);
     const unresolvedNode = TreeSitterUtil.findFirst(
       document.tree.rootNode,
       (node) => node.startPosition.row === 7 && node.startPosition.column === 21,
-    )!;
+    );
+    assert.ok(unresolvedNode);
     const unresolved = new UnresolvedRelativeReference(document, unresolvedNode, ['tau']);
     const resolved = resolveReference(project, unresolved, 'declaration');
 
@@ -117,7 +122,8 @@ describe('resolveReference', () => {
       (node) =>
         node.type === 'component_clause' &&
         TreeSitterUtil.getDeclaredIdentifiers(node)[0] === 'tau',
-    )!;
+    );
+    assert.ok(resolvedNode);
 
     assert(
       resolved?.equals(
@@ -134,24 +140,28 @@ describe('resolveReference', () => {
   it('should resolve relative references to globals', async () => {
     // input Real twoE = 2 * Constants.e;
     //                                 ^ 5:33
-    const unresolvedDocument = (await project.getDocument(TEST_CLASS_PATH))!;
+    const unresolvedDocument = await project.getDocument(TEST_CLASS_PATH);
+    assert.ok(unresolvedDocument);
     const unresolvedNode = TreeSitterUtil.findFirst(
       unresolvedDocument.tree.rootNode,
       (node) => node.startPosition.row === 5 && node.startPosition.column === 33,
-    )!;
+    );
+    assert.ok(unresolvedNode);
     const unresolved = new UnresolvedRelativeReference(unresolvedDocument, unresolvedNode, [
       'Constants',
       'e',
     ]);
     const resolved = resolveReference(project, unresolved, 'declaration');
 
-    const resolvedDocument = (await project.getDocument(CONSTANTS_PATH))!;
+    const resolvedDocument = await project.getDocument(CONSTANTS_PATH);
+    assert.ok(resolvedDocument);
     // Get the node declaring `e`
     const resolvedNode = TreeSitterUtil.findFirst(
       resolvedDocument.tree.rootNode,
       (node) =>
         node.type === 'component_clause' && TreeSitterUtil.getDeclaredIdentifiers(node)[0] === 'e',
-    )!;
+    );
+    assert.ok(resolvedNode);
 
     assert(
       resolved?.equals(

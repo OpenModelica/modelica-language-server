@@ -39,10 +39,9 @@
  * -----------------------------------------------------------------------------
  */
 
-import { Parser, Node as SyntaxNode, Point } from 'web-tree-sitter';
+import { Node as SyntaxNode, Point } from 'web-tree-sitter';
 import * as LSP from 'vscode-languageserver/node';
 
-import { logger } from './logger';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 /**
@@ -51,7 +50,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
  * @param node      The node to start iterating from
  * @param callback  The callback to call for each node. Return false to stop following children.
  */
-export function forEach(node: SyntaxNode, callback: (n: SyntaxNode) => void | boolean) {
+export function forEach(node: SyntaxNode, callback: (n: SyntaxNode) => void | boolean): void {
   const followChildren = callback(node) !== false;
   if (followChildren && node.children.length) {
     node.children.forEach((n) => forEach(n, callback));
@@ -185,6 +184,25 @@ export function getIdentifier(start: SyntaxNode): string | undefined {
 }
 
 /**
+ * Returns the child of `node` for the given `fieldName`.
+ *
+ * Use this for fields that the grammar guarantees to be present: it throws a
+ * descriptive error instead of returning `null`, so a grammar mismatch fails
+ * loudly rather than as an opaque `undefined` access further down.
+ *
+ * @param node      The node to read the field from.
+ * @param fieldName The name of the field.
+ * @returns The child node for the field.
+ */
+export function requireFieldName(node: SyntaxNode, fieldName: string): SyntaxNode {
+  const child = node.childForFieldName(fieldName);
+  if (!child) {
+    throw new Error(`Expected node '${node.type}' to have a '${fieldName}' field`);
+  }
+  return child;
+}
+
+/**
  * Returns the identifier(s) declared by the given node, or `[]` if no
  * identifiers are declared.
  *
@@ -210,7 +228,7 @@ export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
     case 'short_class_specifier':
     case 'enumeration_literal':
     case 'for_index':
-      return [node.childForFieldName('identifier')!.text];
+      return [requireFieldName(node, 'identifier').text];
     case 'stored_definitions':
     case 'component_list':
     case 'enum_list':
@@ -220,21 +238,21 @@ export function getDeclaredIdentifiers(node: SyntaxNode): string[] {
     case 'for_indices':
       return node.namedChildren.flatMap(getDeclaredIdentifiers);
     case 'component_clause':
-      return getDeclaredIdentifiers(node.childForFieldName('componentDeclarations')!);
+      return getDeclaredIdentifiers(requireFieldName(node, 'componentDeclarations'));
     case 'component_declaration':
-      return getDeclaredIdentifiers(node.childForFieldName('declaration')!);
+      return getDeclaredIdentifiers(requireFieldName(node, 'declaration'));
     case 'component_redeclaration':
-      return getDeclaredIdentifiers(node.childForFieldName('componentClause')!);
+      return getDeclaredIdentifiers(requireFieldName(node, 'componentClause'));
     case 'stored_definition':
-      return getDeclaredIdentifiers(node.childForFieldName('classDefinition')!);
+      return getDeclaredIdentifiers(requireFieldName(node, 'classDefinition'));
     case 'class_definition':
-      return getDeclaredIdentifiers(node.childForFieldName('classSpecifier')!);
+      return getDeclaredIdentifiers(requireFieldName(node, 'classSpecifier'));
     case 'for_equation':
     case 'for_statement':
-      return getDeclaredIdentifiers(node.childForFieldName('indices')!);
+      return getDeclaredIdentifiers(requireFieldName(node, 'indices'));
     case 'named_element': {
       const definition =
-        node.childForFieldName('classDefinition') ?? node.childForFieldName('componentClause')!;
+        node.childForFieldName('classDefinition') ?? requireFieldName(node, 'componentClause');
       return getDeclaredIdentifiers(definition);
     }
     default:
@@ -260,7 +278,7 @@ export function getTypeSpecifier(node: SyntaxNode): TypeSpecifier {
   switch (node.type) {
     case 'type_specifier': {
       const isGlobal = node.childForFieldName('global') !== null;
-      const name = node.childForFieldName('name')!;
+      const name = requireFieldName(node, 'name');
       const symbolNodes = getNameIdentifiers(name);
       return {
         isGlobal,
@@ -344,7 +362,7 @@ function getNameIdentifiers(nameNode: SyntaxNode): SyntaxNode[] {
     );
   }
 
-  const identNode = nameNode.childForFieldName('identifier')!;
+  const identNode = requireFieldName(nameNode, 'identifier');
   const qualifierNode = nameNode.childForFieldName('qualifier');
   if (qualifierNode) {
     const qualifier = getNameIdentifiers(qualifierNode);

@@ -44,9 +44,12 @@ export let platformEol: string;
 /**
  * Activates the OpenModelica.modelica-language-server extension
  */
-export async function activate(docUri: vscode.Uri) {
+export async function activate(docUri: vscode.Uri): Promise<void> {
   // The extensionId is `publisher.name` from package.json
-  const ext = vscode.extensions.getExtension('OpenModelica.modelica-language-server')!;
+  const ext = vscode.extensions.getExtension('OpenModelica.modelica-language-server');
+  if (!ext) {
+    throw new Error('Could not find OpenModelica.modelica-language-server extension');
+  }
   await ext.activate();
   try {
     doc = await vscode.workspace.openTextDocument(docUri);
@@ -61,10 +64,10 @@ async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export const getDocPath = (p: string) => {
+export const getDocPath = (p: string): string => {
   return path.resolve(__dirname, '../../testFixture', p);
 };
 
-export const getDocUri = (p: string) => {
+export const getDocUri = (p: string): vscode.Uri => {
   return vscode.Uri.file(getDocPath(p));
 };

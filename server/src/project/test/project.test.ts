@@ -102,7 +102,8 @@ describe('ModelicaProject', () => {
     });
 
     it('documents can be updated', async () => {
-      const document = (await project.getDocument(TEST_PACKAGE_PATH))!;
+      const document = await project.getDocument(TEST_PACKAGE_PATH);
+      assert.ok(document);
       assert.equal(
         document.getText().replace(/\r\n/g, '\n'),
         TEST_PACKAGE_CONTENT.replace(/\r\n/g, '\n'),
