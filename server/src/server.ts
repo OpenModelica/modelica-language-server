@@ -36,7 +36,7 @@
 /* -----------------------------------------------------------------------------
  * Taken from bash-language-server and adapted to Modelica language server
  * https://github.com/bash-lsp/bash-language-server/blob/main/server/src/server.ts
- * ----------------------------------------------------------------------------
+ * -----------------------------------------------------------------------------
  */
 
 import * as LSP from 'vscode-languageserver/node';

@@ -497,6 +497,8 @@ function resolveReferenceInLibrary(
     }
   }
 
+  logger.debug(`Resolved symbol ${alreadyResolved}`);
+
   return alreadyResolved;
 }
 

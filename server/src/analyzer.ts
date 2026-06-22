@@ -279,6 +279,13 @@ export default class Analyzer {
     return null;
   }
 
+  /**
+   * Builds a Markdown hover from a class definition node.
+   *
+   * @param classDefNode a `class_definition` syntax node
+   * @returns a Markdown {@link LSP.Hover}, or `null` if no hover information
+   *     could be extracted from the node.
+   */
   private hoverFromClassDef(classDefNode: SyntaxNode): LSP.Hover | null {
     const hoverInfo = extractHoverInformation(classDefNode);
     if (!hoverInfo) {
