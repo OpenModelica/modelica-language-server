@@ -111,7 +111,7 @@ export class Logger {
     [LSP.MessageType.Debug]: console.debug,
   };
 
-  public log(severity: LSP.MessageType, messageObjects: any[]) {
+  public log(severity: LSP.MessageType, messageObjects: unknown[]) {
     const logLevelString = _options.logLevel ?? getLogLevelFromEnvironment();
     const logLevel = LOG_LEVELS_TO_MESSAGE_TYPES[logLevelString];
     if (logLevel < severity) {
@@ -150,16 +150,16 @@ export class Logger {
     }
   }
 
-  public debug(message: string, ...additionalArgs: any[]) {
+  public debug(message: string, ...additionalArgs: unknown[]) {
     this.log(LSP.MessageType.Debug, [message, ...additionalArgs]);
   }
-  public info(message: string, ...additionalArgs: any[]) {
+  public info(message: string, ...additionalArgs: unknown[]) {
     this.log(LSP.MessageType.Info, [message, ...additionalArgs]);
   }
-  public warn(message: string, ...additionalArgs: any[]) {
+  public warn(message: string, ...additionalArgs: unknown[]) {
     this.log(LSP.MessageType.Warning, [message, ...additionalArgs]);
   }
-  public error(message: string, ...additionalArgs: any[]) {
+  public error(message: string, ...additionalArgs: unknown[]) {
     this.log(LSP.MessageType.Error, [message, ...additionalArgs]);
   }
 }
