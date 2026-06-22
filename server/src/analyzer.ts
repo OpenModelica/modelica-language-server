@@ -72,16 +72,30 @@ export default class Analyzer {
    * @param uri uri to the library root
    * @param isWorkspace `true` if this is a user workspace/project, `false` if
    *     this is a library.
+   * @returns `true` if the library was loaded, `false` if it was skipped because
+   *     the path does not exist or does not contain a `package.mo`.
    */
-  public async loadLibrary(uri: LSP.URI, isWorkspace: boolean): Promise<void> {
+  public async loadLibrary(uri: LSP.URI, isWorkspace: boolean): Promise<boolean> {
     const isLibrary = (folderPath: string) =>
       fsSync.existsSync(path.join(folderPath, 'package.mo'));
 
     const libraryPath = url.fileURLToPath(uri);
+    if (!fsSync.existsSync(libraryPath)) {
+      logger.debug(
+        `Skipping ${isWorkspace ? 'workspace' : 'library'} at '${libraryPath}': path does not exist.`,
+      );
+      return false;
+    }
+
     if (!isWorkspace || isLibrary(libraryPath)) {
+      if (!isLibrary(libraryPath)) {
+        logger.debug(`Skipping library at '${libraryPath}': no 'package.mo' found.`);
+        return false;
+      }
+
       const lib = await ModelicaLibrary.load(this.#project, libraryPath, isWorkspace);
       this.#project.addLibrary(lib);
-      return;
+      return true;
     }
 
     // TODO: go deeper... something like `TreeSitterUtil.forEach` but for files
@@ -95,6 +109,8 @@ export default class Analyzer {
       const library = await ModelicaLibrary.load(this.#project, nested, isWorkspace);
       this.#project.addLibrary(library);
     }
+
+    return true;
   }
 
   /**
