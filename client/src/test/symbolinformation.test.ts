@@ -76,29 +76,7 @@ async function testSymbolInformation(
     docUri,
   );
 
-  //printDocumentSymbols(actualSymbolInformation);
   assertDocumentSymbolsEqual(expectedDocumentSymbols, actualSymbolInformation);
-}
-
-function printDocumentSymbols(documentSymbols: vscode.DocumentSymbol[]) {
-  documentSymbols.forEach((symbol, index) => {
-    console.log(`Document Symbol ${index + 1}:`);
-    console.log(`Name: ${symbol.name}`);
-    console.log(`Kind: ${vscode.SymbolKind[symbol.kind]}`);
-    console.log(
-      `Range: ${symbol.range.start.line}:${symbol.range.start.character}, ${symbol.range.end.line}:${symbol.range.end.character}`,
-    );
-    console.log(
-      `SelectionRange: ${symbol.selectionRange.start.line}:${symbol.selectionRange.start.character}, ${symbol.selectionRange.end.line}:${symbol.selectionRange.end.character}`,
-    );
-    console.log('Children:');
-
-    if (symbol.children && symbol.children.length > 0) {
-      printDocumentSymbols(symbol.children);
-    }
-
-    console.log('---');
-  });
 }
 
 function assertDocumentSymbolsEqual(

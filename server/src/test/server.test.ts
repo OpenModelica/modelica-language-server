@@ -49,7 +49,7 @@ const parsedModelicaTestString =
 
 describe('Modelica tree-sitter parser', () => {
   it('Initialize parser', async () => {
-    const parser = await initializeParser();
+    await initializeParser();
   });
 
   it('Parse string', async () => {

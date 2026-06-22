@@ -33,7 +33,7 @@
  *
  */
 
-import { Parser, Node as SyntaxNode } from 'web-tree-sitter';
+import { Node as SyntaxNode } from 'web-tree-sitter';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 

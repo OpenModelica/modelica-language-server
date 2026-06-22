@@ -35,7 +35,7 @@
 
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { ModelicaProject, ModelicaLibrary, ModelicaDocument } from '../../project';
+import { ModelicaProject, ModelicaLibrary } from '../../project';
 import { initializeParser } from '../../parser';
 import resolveReference from '../resolveReference';
 import {

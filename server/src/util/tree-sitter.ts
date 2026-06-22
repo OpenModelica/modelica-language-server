@@ -39,10 +39,9 @@
  * -----------------------------------------------------------------------------
  */
 
-import { Parser, Node as SyntaxNode, Point } from 'web-tree-sitter';
+import { Node as SyntaxNode, Point } from 'web-tree-sitter';
 import * as LSP from 'vscode-languageserver/node';
 
-import { logger } from './logger';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 /**

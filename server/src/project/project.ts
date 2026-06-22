@@ -35,7 +35,6 @@
 
 import { Parser } from 'web-tree-sitter';
 import * as LSP from 'vscode-languageserver';
-import url from 'node:url';
 import path from 'node:path';
 
 import { ModelicaLibrary } from './library';
