@@ -29,12 +29,14 @@
   "scripts": {
     "build": "node esbuild.config.js",
     "build:watch": "node esbuild.config.js --watch",
+    "build:standalone": "npm run build && node scripts/build-standalone.js",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
     "esbuild": "^0.28.0",
+    "postject": "^1.0.0-alpha.6",
     "tsx": "^4.19.0",
     "typescript": "^6.0.0"
   },
