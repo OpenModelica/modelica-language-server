@@ -2,7 +2,7 @@
   "name": "modelica-language-server",
   "displayName": "Modelica Language Server",
   "description": "[Experimental] Modelica language server",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "Andreas Heuermann, Osman Karabel, Evan Hedbor, PaddiM8",
   "license": "OSMC-PL-1-8",
   "repository": {
