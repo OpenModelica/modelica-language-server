@@ -205,9 +205,19 @@ export class ModelicaServer {
     connection.onDidChangeTextDocument(this.onDidChangeTextDocument.bind(this));
     connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
     connection.onDidChangeConfiguration(this.onDidChangeConfiguration.bind(this));
-    connection.workspace.onDidChangeWorkspaceFolders(
-      this.onDidChangeWorkspaceFolders.bind(this),
-    );
+    // `connection.workspace.onDidChangeWorkspaceFolders` throws if the client
+    // didn't advertise the `workspace.workspaceFolders` capability; a missing
+    // capability here must not take down `initialize` for every other feature.
+    try {
+      connection.workspace.onDidChangeWorkspaceFolders(
+        this.onDidChangeWorkspaceFolders.bind(this),
+      );
+    } catch (err) {
+      logger.warn(
+        `Client does not support workspace folder change notifications; libraries added ` +
+          `after startup will require a restart. (${err instanceof Error ? err.message : err})`,
+      );
+    }
     connection.onDeclaration(this.onDeclaration.bind(this));
     connection.onDefinition(this.onDefinition.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));

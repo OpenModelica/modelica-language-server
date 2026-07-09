@@ -213,4 +213,25 @@ describe('runtime library loading', () => {
       await client.dispose();
     }
   });
+
+  it('initializes successfully for a client that does not support workspace folder change notifications', async function () {
+    this.timeout(20_000);
+
+    // `connection.workspace.onDidChangeWorkspaceFolders` throws if the client
+    // capabilities don't include `workspace.workspaceFolders`. That must not
+    // fail `initialize` for clients that simply don't support the feature.
+    const client = new LspTestClient();
+    try {
+      const response = await client.request('initialize', {
+        processId: process.pid,
+        rootUri: null,
+        capabilities: {},
+        initializationOptions: { libraries: [] },
+      });
+      assert.equal(response.error, undefined, JSON.stringify(response.error));
+      assert.ok(response.result, 'initialize should return a result');
+    } finally {
+      await client.dispose();
+    }
+  });
 });
