@@ -56,7 +56,9 @@ import url from 'node:url';
 const SERVER_BUNDLE = path.join(__dirname, '..', '..', '..', 'out', 'server.js');
 const LIB_A = path.join(__dirname, 'fixtures', 'RuntimeLoadLibA');
 const LIB_B = path.join(__dirname, 'fixtures', 'RuntimeLoadLibB');
+const LIB_C = path.join(__dirname, 'fixtures', 'RuntimeLoadLibC');
 const FILE_N = path.join(LIB_B, 'N.mo');
+const FILE_P = path.join(LIB_C, 'P.mo');
 
 function fileUri(p: string): string {
   return url.pathToFileURL(p).toString();
@@ -77,6 +79,7 @@ class LspTestClient {
   #nextId = 1;
   #pending = new Map<number, (msg: JsonRpcMessage) => void>();
   #exitCode: number | null | undefined = undefined;
+  #logs: string[] = [];
 
   constructor() {
     assert.ok(
@@ -101,6 +104,23 @@ class LspTestClient {
     return this.#exitCode;
   }
 
+  /** All `window/logMessage` texts received from the server so far. */
+  get logs(): readonly string[] {
+    return this.#logs;
+  }
+
+  /** Waits until a log message containing `substring` arrives, or times out. */
+  async waitForLog(substring: string, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (this.#logs.some((l) => l.includes(substring))) {
+        return true;
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return this.#logs.some((l) => l.includes(substring));
+  }
+
   #onData(chunk: Buffer): void {
     this.#buffer = Buffer.concat([this.#buffer, chunk]);
     for (;;) {
@@ -116,6 +136,13 @@ class LspTestClient {
       this.#buffer = this.#buffer.subarray(bodyStart + length);
 
       const message = JSON.parse(body) as JsonRpcMessage;
+      if (message.method === 'window/logMessage') {
+        const logParams = message.params as { message?: unknown } | undefined;
+        if (typeof logParams?.message === 'string') {
+          this.#logs.push(logParams.message);
+        }
+        continue;
+      }
       const resolve = message.id !== undefined ? this.#pending.get(message.id) : undefined;
       if (message.id !== undefined && resolve) {
         this.#pending.delete(message.id);
@@ -189,6 +216,28 @@ async function waitForDefinition(
     await new Promise((r) => setTimeout(r, 50));
   } while (Date.now() < deadline);
   return lastResult;
+}
+
+/** Locates the position of `symbol` inside the first line containing `marker`. */
+function positionOf(text: string, marker: string, symbol: string): { line: number; character: number } {
+  const lines = text.split('\n');
+  const line = lines.findIndex((l) => l.includes(marker));
+  assert.notEqual(line, -1, `fixture must contain a line with '${marker}'`);
+  const character = lines[line].indexOf(symbol) + 1;
+  return { line, character };
+}
+
+/** Initializes the server with `libB` as the only known workspace folder. */
+async function initializeWithLibB(client: LspTestClient): Promise<void> {
+  const libBUri = fileUri(LIB_B);
+  await client.request('initialize', {
+    processId: process.pid,
+    rootUri: libBUri,
+    workspaceFolders: [{ uri: libBUri, name: 'RuntimeLoadLibB' }],
+    capabilities: { workspace: { workspaceFolders: true, didChangeWorkspaceFolders: true } },
+    initializationOptions: { libraries: [] },
+  });
+  client.notify('initialized', {});
 }
 
 describe('runtime library loading', () => {
@@ -307,6 +356,131 @@ describe('runtime library loading', () => {
         textDocument: { uri: nUri },
       });
       assert.equal(response.error, undefined, JSON.stringify(response.error));
+    } finally {
+      await client.dispose();
+    }
+  });
+
+  it('resolves an external reference after the library list is pushed via didChangeConfiguration', async function () {
+    this.timeout(20_000);
+
+    // A client can make a new library available by pushing an updated
+    // `modelica.libraries` list, without adding a workspace folder.
+    const client = new LspTestClient();
+    try {
+      const nUri = fileUri(FILE_N);
+      const nText = fs.readFileSync(FILE_N, 'utf8');
+      const position = positionOf(nText, 'extends RuntimeLoadLibA.M', 'RuntimeLoadLibA.M');
+
+      await initializeWithLibB(client);
+      client.notify('textDocument/didOpen', {
+        textDocument: { uri: nUri, languageId: 'modelica', version: 1, text: nText },
+      });
+
+      const before = await client.request('textDocument/definition', {
+        textDocument: { uri: nUri },
+        position,
+      });
+      assert.deepEqual(before.result, [], 'should not resolve before libA is configured');
+
+      // libB is already loaded (its path repeats here); only libA is new.
+      client.notify('workspace/didChangeConfiguration', {
+        settings: { modelica: { libraries: [LIB_A, LIB_B] } },
+      });
+
+      const after = await waitForDefinition(client, nUri, position, 5_000);
+      assert.ok(
+        Array.isArray(after) && after.length > 0,
+        `RuntimeLoadLibA.M should resolve after the config push, got: ${JSON.stringify(after)}`,
+      );
+      assert.equal(client.hasExited, false, `server exited (code ${client.exitCode})`);
+    } finally {
+      await client.dispose();
+    }
+  });
+
+  it('treats re-announcing an already-loaded library as a no-op without disturbing resolution', async function () {
+    this.timeout(20_000);
+
+    // Loading the same library twice must not re-parse it or break the state
+    // it already built up; the second announcement should be skipped.
+    const client = new LspTestClient();
+    try {
+      const nUri = fileUri(FILE_N);
+      const nText = fs.readFileSync(FILE_N, 'utf8');
+      const position = positionOf(nText, 'extends RuntimeLoadLibA.M', 'RuntimeLoadLibA.M');
+      const libAFolder = { uri: fileUri(LIB_A), name: 'RuntimeLoadLibA' };
+
+      await initializeWithLibB(client);
+      client.notify('textDocument/didOpen', {
+        textDocument: { uri: nUri, languageId: 'modelica', version: 1, text: nText },
+      });
+
+      client.notify('workspace/didChangeWorkspaceFolders', {
+        event: { added: [libAFolder], removed: [] },
+      });
+      const first = await waitForDefinition(client, nUri, position, 5_000);
+      assert.ok(Array.isArray(first) && first.length > 0, 'libA should resolve after first announce');
+
+      // Announce the very same folder again.
+      client.notify('workspace/didChangeWorkspaceFolders', {
+        event: { added: [libAFolder], removed: [] },
+      });
+      assert.ok(
+        await client.waitForLog('already loaded', 5_000),
+        `expected an "already loaded" log for the duplicate announce; logs: ${client.logs.join(' | ')}`,
+      );
+
+      // Resolution must still work after the duplicate announce.
+      const second = await waitForDefinition(client, nUri, position, 5_000);
+      assert.ok(
+        Array.isArray(second) && second.length > 0,
+        `RuntimeLoadLibA.M should still resolve after a duplicate announce, got: ${JSON.stringify(second)}`,
+      );
+      assert.equal(client.hasExited, false, `server exited (code ${client.exitCode})`);
+    } finally {
+      await client.dispose();
+    }
+  });
+
+  it('loads valid libraries while tolerating an invalid folder announced in the same batch', async function () {
+    this.timeout(20_000);
+
+    // Two runtime-added libraries where one references the other, mixed with a
+    // nonexistent folder: the bad entry must neither crash the server nor stop
+    // the good ones from loading, and cross-library resolution must work.
+    const client = new LspTestClient();
+    try {
+      const pUri = fileUri(FILE_P);
+      const pText = fs.readFileSync(FILE_P, 'utf8');
+      const position = positionOf(pText, 'extends RuntimeLoadLibA.M', 'RuntimeLoadLibA.M');
+      const missing = path.join(LIB_B, 'this-folder-does-not-exist');
+
+      await initializeWithLibB(client);
+      client.notify('textDocument/didOpen', {
+        textDocument: { uri: pUri, languageId: 'modelica', version: 1, text: pText },
+      });
+
+      // Announce a bad folder and both real libraries together.
+      client.notify('workspace/didChangeWorkspaceFolders', {
+        event: {
+          added: [
+            { uri: fileUri(missing), name: 'Missing' },
+            { uri: fileUri(LIB_A), name: 'RuntimeLoadLibA' },
+            { uri: fileUri(LIB_C), name: 'RuntimeLoadLibC' },
+          ],
+          removed: [],
+        },
+      });
+
+      // P (in libC) extends RuntimeLoadLibA.M (in libA): resolving it proves
+      // both were loaded despite the invalid sibling.
+      const after = await waitForDefinition(client, pUri, position, 5_000);
+      assert.ok(
+        Array.isArray(after) && after.length > 0,
+        `cross-library reference should resolve, got: ${JSON.stringify(after)}`,
+      );
+      assert.equal(client.hasExited, false, `server exited (code ${client.exitCode})`);
     } finally {
       await client.dispose();
     }

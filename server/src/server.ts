@@ -218,20 +218,14 @@ export class ModelicaServer {
 
   private async onInitialized(): Promise<void> {
     logger.debug('onInitialized');
-    await connection.client.register(
-      new LSP.ProtocolNotificationType('workspace/didChangeWatchedFiles'),
-      {
-        watchers: [
-          {
-            globPattern: '**/*.{mo,mos}',
-          },
-        ],
-      },
-    );
 
-    // `connection.workspace.onDidChangeWorkspaceFolders` throws if the client
-    // didn't advertise the `workspace.workspaceFolders` capability; a missing
-    // capability must not take down the rest of the session.
+    // Subscribe synchronously, before the first `await` below: otherwise a
+    // `workspace/didChangeWorkspaceFolders` notification arriving while that
+    // await is pending is delivered before the handler is attached and lost.
+    // Capabilities are already filled by now, so this sends no dynamic
+    // registration. It throws if the client didn't advertise the
+    // `workspace.workspaceFolders` capability, which must not take down the
+    // rest of the session.
     try {
       this.#connection.workspace.onDidChangeWorkspaceFolders(
         this.onDidChangeWorkspaceFolders.bind(this),
@@ -242,6 +236,17 @@ export class ModelicaServer {
           `after startup will require a restart. (${err instanceof Error ? err.message : err})`,
       );
     }
+
+    await connection.client.register(
+      new LSP.ProtocolNotificationType('workspace/didChangeWatchedFiles'),
+      {
+        watchers: [
+          {
+            globPattern: '**/*.{mo,mos}',
+          },
+        ],
+      },
+    );
 
     // If we opened a project, analyze it now that we're initialized
     // and the linter is ready.
