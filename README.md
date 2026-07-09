@@ -56,8 +56,12 @@ Typical paths:
 | Windows  | `%APPDATA%\OpenModelica\libraries\`      |
 | macOS    | `~/.openmodelica/libraries/`             |
 
-The server loads all configured libraries at startup. Changes take effect after
-reloading the VS Code window (**Developer: Reload Window**).
+The server loads all configured libraries at startup, and also picks up
+libraries added later without a restart: adding a workspace folder, or
+pushing an updated `modelica.libraries` list via
+`workspace/didChangeConfiguration`, loads the new library into the running
+session. Removing a workspace folder does not unload its library yet; a
+restart is still required for that.
 
 ## Installation
 
