@@ -49,7 +49,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 
-const SERVER_BUNDLE = path.join(__dirname, '..', '..', 'out', 'server.js');
+// Built by the root esbuild.config.js (`npm run esbuild` at the repo root),
+// which is what CI runs before the test suite. This is NOT the same output
+// as `server/out/server.js` (produced by `server`'s own `npm run build`,
+// used for the standalone SEA binary).
+const SERVER_BUNDLE = path.join(__dirname, '..', '..', '..', 'out', 'server.js');
 const LIB_A = path.join(__dirname, 'fixtures', 'RuntimeLoadLibA');
 const LIB_B = path.join(__dirname, 'fixtures', 'RuntimeLoadLibB');
 const FILE_N = path.join(LIB_B, 'N.mo');
