@@ -63,3 +63,35 @@ describe('Analyzer.loadLibrary', () => {
     assert.equal(await analyzer.loadLibrary(missingUri, true), false);
   });
 });
+
+describe('Analyzer.unloadLibrary', () => {
+  const FIXTURES = path.join(__dirname, 'fixtures');
+  const LIB_A = path.join(FIXTURES, 'RuntimeLoadLibA');
+  const libAUri = url.pathToFileURL(LIB_A).toString();
+
+  let analyzer: Analyzer;
+
+  beforeEach(async () => {
+    const parser = await initializeParser();
+    analyzer = new Analyzer(parser);
+  });
+
+  it('unloads a loaded library and reports its path once', async () => {
+    assert.equal(await analyzer.loadLibrary(libAUri, false), true);
+
+    assert.deepEqual(analyzer.unloadLibrary(libAUri), [LIB_A]);
+    // Already gone: a second unload finds nothing to remove.
+    assert.deepEqual(analyzer.unloadLibrary(libAUri), []);
+  });
+
+  it('unloads libraries nested under a removed root', async () => {
+    assert.equal(await analyzer.loadLibrary(libAUri, false), true);
+
+    const removed = analyzer.unloadLibrary(url.pathToFileURL(FIXTURES).toString());
+    assert.ok(removed.includes(LIB_A), `expected ${LIB_A} to be unloaded, got ${JSON.stringify(removed)}`);
+  });
+
+  it('returns an empty list when no loaded library matches', () => {
+    assert.deepEqual(analyzer.unloadLibrary(libAUri), []);
+  });
+});

@@ -485,4 +485,64 @@ describe('runtime library loading', () => {
       await client.dispose();
     }
   });
+
+  it('unloads a library when its workspace folder is removed, and can reload it afterwards', async function () {
+    this.timeout(20_000);
+
+    // A long-running session (e.g. OMEdit) can free a library it no longer
+    // needs: removing the workspace folder unloads it, so references stop
+    // resolving; announcing it again reloads it from scratch.
+    const client = new LspTestClient();
+    try {
+      const nUri = fileUri(FILE_N);
+      const nText = fs.readFileSync(FILE_N, 'utf8');
+      const position = positionOf(nText, 'extends RuntimeLoadLibA.M', 'RuntimeLoadLibA.M');
+      const libAFolder = { uri: fileUri(LIB_A), name: 'RuntimeLoadLibA' };
+
+      await initializeWithLibB(client);
+      client.notify('textDocument/didOpen', {
+        textDocument: { uri: nUri, languageId: 'modelica', version: 1, text: nText },
+      });
+
+      // Add, then confirm it resolves.
+      client.notify('workspace/didChangeWorkspaceFolders', {
+        event: { added: [libAFolder], removed: [] },
+      });
+      const added = await waitForDefinition(client, nUri, position, 5_000);
+      assert.ok(Array.isArray(added) && added.length > 0, 'libA should resolve after being added');
+
+      // Remove the folder: the library is unloaded and no longer resolves.
+      client.notify('workspace/didChangeWorkspaceFolders', {
+        event: { added: [], removed: [libAFolder] },
+      });
+      assert.ok(
+        await client.waitForLog('Unloaded 1 library', 5_000),
+        `expected an unload log; logs: ${client.logs.join(' | ')}`,
+      );
+      // Give the unload a moment to take effect, then confirm it stopped resolving.
+      await new Promise((r) => setTimeout(r, 300));
+      const afterRemoval = await client.request('textDocument/definition', {
+        textDocument: { uri: nUri },
+        position,
+      });
+      assert.deepEqual(
+        afterRemoval.result,
+        [],
+        `RuntimeLoadLibA.M should not resolve after libA is unloaded, got: ${JSON.stringify(afterRemoval.result)}`,
+      );
+
+      // Re-adding reloads it (proves the remembered path was forgotten on removal).
+      client.notify('workspace/didChangeWorkspaceFolders', {
+        event: { added: [libAFolder], removed: [] },
+      });
+      const readded = await waitForDefinition(client, nUri, position, 5_000);
+      assert.ok(
+        Array.isArray(readded) && readded.length > 0,
+        `RuntimeLoadLibA.M should resolve again after re-adding libA, got: ${JSON.stringify(readded)}`,
+      );
+      assert.equal(client.hasExited, false, `server exited (code ${client.exitCode})`);
+    } finally {
+      await client.dispose();
+    }
+  });
 });

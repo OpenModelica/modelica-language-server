@@ -114,6 +114,19 @@ export default class Analyzer {
   }
 
   /**
+   * Unloads every library at or below the given workspace/library root, so a
+   * client that removed a workspace folder can free the associated libraries
+   * without restarting the server.
+   *
+   * @param uri uri to the library/workspace root
+   * @returns the file-system paths of the libraries that were unloaded
+   */
+  public unloadLibrary(uri: LSP.URI): string[] {
+    const rootPath = path.resolve(url.fileURLToPath(uri));
+    return this.#project.removeLibrariesUnder(rootPath);
+  }
+
+  /**
    * Adds a document to the analyzer.
    *
    * Note: {@link loadLibrary} already adds all discovered documents to the

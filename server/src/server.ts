@@ -290,10 +290,10 @@ export class ModelicaServer {
   }
 
   /**
-   * Loads libraries added to the workspace after startup, so a client can
-   * make a new library available (e.g. to resolve an external `within`
-   * reference) without restarting the server. Folders can only be added;
-   * there is currently no support for unloading a removed folder.
+   * Loads libraries added to the workspace and unloads those removed after
+   * startup, so a client can make a new library available (e.g. to resolve an
+   * external `within` reference) or free one it no longer needs, without
+   * restarting the server.
    */
   private async onDidChangeWorkspaceFolders(
     event: LSP.WorkspaceFoldersChangeEvent,
@@ -309,11 +309,40 @@ export class ModelicaServer {
       }
     }
 
-    if (event.removed.length > 0) {
+    for (const folder of event.removed) {
+      this.#unloadLibrary(folder.uri);
+    }
+  }
+
+  /**
+   * Unloads every library under a removed workspace folder and forgets its
+   * path so the same folder can be added again later.
+   */
+  #unloadLibrary(uri: LSP.URI): void {
+    let normalizedRoot: string;
+    try {
+      normalizedRoot = path.resolve(url.fileURLToPath(uri));
+    } catch (err) {
       logger.warn(
-        `${event.removed.length} workspace folder(s) were removed, but unloading libraries at ` +
-          `runtime is not supported yet; restart the language server to fully unload them.`,
+        `Ignoring removed workspace folder with non-file URI '${uri}': ` +
+          `${err instanceof Error ? err.message : err}`,
       );
+      return;
+    }
+
+    const removedPaths = this.#analyzer.unloadLibrary(uri);
+    this.#loadedLibraryPaths.delete(normalizedRoot);
+    for (const removed of removedPaths) {
+      this.#loadedLibraryPaths.delete(path.resolve(removed));
+    }
+
+    if (removedPaths.length > 0) {
+      logger.info(
+        `Unloaded ${removedPaths.length} librar${removedPaths.length === 1 ? 'y' : 'ies'} ` +
+          `under removed workspace folder '${uri}'.`,
+      );
+    } else {
+      logger.debug(`No loaded libraries found under removed workspace folder '${uri}'.`);
     }
   }
 
