@@ -76,6 +76,7 @@ class LspTestClient {
   #buffer = Buffer.alloc(0);
   #nextId = 1;
   #pending = new Map<number, (msg: JsonRpcMessage) => void>();
+  #exitCode: number | null | undefined = undefined;
 
   constructor() {
     assert.ok(
@@ -86,6 +87,18 @@ class LspTestClient {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.#child.stdout.on('data', (chunk: Buffer) => this.#onData(chunk));
+    this.#child.on('exit', (code) => {
+      this.#exitCode = code;
+    });
+  }
+
+  /** `true` once the server process has exited (e.g. crashed). */
+  get hasExited(): boolean {
+    return this.#exitCode !== undefined;
+  }
+
+  get exitCode(): number | null | undefined {
+    return this.#exitCode;
   }
 
   #onData(chunk: Buffer): void {
@@ -107,6 +120,19 @@ class LspTestClient {
       if (message.id !== undefined && resolve) {
         this.#pending.delete(message.id);
         resolve(message);
+      } else if (message.id !== undefined && message.method) {
+        // Server-to-client request. Mimic vscode-languageclient: reject a
+        // (redundant) dynamic registration of workspace folder change events
+        // the way the real client does, but accept everything else. A server
+        // that sends this registration crashes on the unhandled rejection.
+        const registersWorkspaceFolders =
+          message.method === 'client/registerCapability' &&
+          JSON.stringify(message.params ?? '').includes('workspace/didChangeWorkspaceFolders');
+        if (registersWorkspaceFolders) {
+          this.#send({ id: message.id, error: { code: -32601, message: 'Unexpected registration' } });
+        } else {
+          this.#send({ id: message.id, result: null });
+        }
       }
     }
   }
@@ -130,8 +156,14 @@ class LspTestClient {
   }
 
   async dispose(): Promise<void> {
-    await this.request('shutdown', {});
-    this.notify('exit', undefined);
+    // A crashed server never answers shutdown; don't hang the test on it.
+    if (!this.hasExited) {
+      await Promise.race([
+        this.request('shutdown', {}),
+        new Promise((r) => setTimeout(r, 1_000)),
+      ]);
+      this.notify('exit', undefined);
+    }
     this.#child.kill();
   }
 }
@@ -230,6 +262,51 @@ describe('runtime library loading', () => {
       });
       assert.equal(response.error, undefined, JSON.stringify(response.error));
       assert.ok(response.result, 'initialize should return a result');
+    } finally {
+      await client.dispose();
+    }
+  });
+
+  it('stays alive after initialized when the client rejects a workspace folder registration', async function () {
+    this.timeout(20_000);
+
+    // Regression: subscribing to workspace folder changes during `initialize`
+    // sent a premature, redundant dynamic registration. A client that rejects
+    // it (as vscode-languageclient does, see LspTestClient) crashed the server
+    // on the unhandled rejection, silently killing every subsequent request.
+    const client = new LspTestClient();
+    try {
+      const libBUri = fileUri(LIB_B);
+      const nUri = fileUri(FILE_N);
+      const nText = fs.readFileSync(FILE_N, 'utf8');
+
+      await client.request('initialize', {
+        processId: process.pid,
+        rootUri: libBUri,
+        workspaceFolders: [{ uri: libBUri, name: 'RuntimeLoadLibB' }],
+        capabilities: { workspace: { workspaceFolders: true } },
+        initializationOptions: { libraries: [] },
+      });
+      client.notify('initialized', {});
+      client.notify('textDocument/didOpen', {
+        textDocument: { uri: nUri, languageId: 'modelica', version: 1, text: nText },
+      });
+
+      // Give the server time to process the rejected registration; a buggy
+      // server crashes here on the unhandled rejection.
+      await new Promise((r) => setTimeout(r, 500));
+      assert.equal(
+        client.hasExited,
+        false,
+        `server process exited (code ${client.exitCode}) after the client rejected a ` +
+          `workspace folder registration`,
+      );
+
+      // And it still answers requests.
+      const response = await client.request('textDocument/documentSymbol', {
+        textDocument: { uri: nUri },
+      });
+      assert.equal(response.error, undefined, JSON.stringify(response.error));
     } finally {
       await client.dispose();
     }

@@ -205,19 +205,11 @@ export class ModelicaServer {
     connection.onDidChangeTextDocument(this.onDidChangeTextDocument.bind(this));
     connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
     connection.onDidChangeConfiguration(this.onDidChangeConfiguration.bind(this));
-    // `connection.workspace.onDidChangeWorkspaceFolders` throws if the client
-    // didn't advertise the `workspace.workspaceFolders` capability; a missing
-    // capability here must not take down `initialize` for every other feature.
-    try {
-      connection.workspace.onDidChangeWorkspaceFolders(
-        this.onDidChangeWorkspaceFolders.bind(this),
-      );
-    } catch (err) {
-      logger.warn(
-        `Client does not support workspace folder change notifications; libraries added ` +
-          `after startup will require a restart. (${err instanceof Error ? err.message : err})`,
-      );
-    }
+    // Workspace folder change subscription is done in `onInitialized`, not
+    // here: subscribing during `onInitialize` (before the server capabilities
+    // are filled) makes the library send a premature, redundant dynamic
+    // `client/registerCapability`, which the client rejects and crashes the
+    // process on the unhandled rejection.
     connection.onDeclaration(this.onDeclaration.bind(this));
     connection.onDefinition(this.onDefinition.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
@@ -236,6 +228,20 @@ export class ModelicaServer {
         ],
       },
     );
+
+    // `connection.workspace.onDidChangeWorkspaceFolders` throws if the client
+    // didn't advertise the `workspace.workspaceFolders` capability; a missing
+    // capability must not take down the rest of the session.
+    try {
+      this.#connection.workspace.onDidChangeWorkspaceFolders(
+        this.onDidChangeWorkspaceFolders.bind(this),
+      );
+    } catch (err) {
+      logger.warn(
+        `Client does not support workspace folder change notifications; libraries added ` +
+          `after startup will require a restart. (${err instanceof Error ? err.message : err})`,
+      );
+    }
 
     // If we opened a project, analyze it now that we're initialized
     // and the linter is ready.
