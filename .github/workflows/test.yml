@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup npm
         uses: actions/setup-node@v6
@@ -24,7 +24,7 @@ jobs:
           registry-url: https://registry.npmjs.org/
 
       - name: Cache VS Code test downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .vscode-test
           key: vscode-test-${{ runner.os }}-stable
