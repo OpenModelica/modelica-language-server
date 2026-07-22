@@ -84,7 +84,6 @@ jobs:
           path: server-release/
 
   build-binaries:
-    if: startsWith(github.ref, 'refs/tags/')
     strategy:
       matrix:
         include:
