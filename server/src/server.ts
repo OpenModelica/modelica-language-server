@@ -60,6 +60,10 @@ export class ModelicaServer {
   // analyzer, so a later notification about the same folder is a no-op
   // instead of loading it (and all its documents) a second time.
   #loadedLibraryPaths: Set<string> = new Set();
+  // Absolute paths from the latest modelica.libraries configuration. Keep
+  // these separate from loaded paths so a shrunken configuration can unload
+  // roots that disappeared from it.
+  #configuredLibraryPaths: Set<string> = new Set();
 
   private constructor(analyzer: Analyzer, connection: LSP.Connection) {
     this.#analyzer = analyzer;
@@ -87,24 +91,25 @@ export class ModelicaServer {
       }
     }
 
-    const configuredLibraries = [
-      ...(Array.isArray(
-        (initializationOptions as { modelicaPath?: unknown } | undefined)?.modelicaPath,
-      )
-        ? (initializationOptions as { modelicaPath: unknown[] }).modelicaPath.filter(
-            (value): value is string => typeof value === 'string' && value.length > 0,
-          )
-        : []),
-      ...(Array.isArray((initializationOptions as { libraries?: unknown } | undefined)?.libraries)
-        ? (initializationOptions as { libraries: unknown[] }).libraries.filter(
-            (value): value is string => typeof value === 'string' && value.length > 0,
-          )
-        : []),
-    ];
+    const modelicaPath = Array.isArray(
+      (initializationOptions as { modelicaPath?: unknown } | undefined)?.modelicaPath,
+    )
+      ? (initializationOptions as { modelicaPath: unknown[] }).modelicaPath.filter(
+          (value): value is string => typeof value === 'string' && value.length > 0,
+        )
+      : [];
+    const configuredLibraries = Array.isArray(
+      (initializationOptions as { libraries?: unknown } | undefined)?.libraries,
+    )
+      ? (initializationOptions as { libraries: unknown[] }).libraries.filter(
+          (value): value is string => typeof value === 'string' && value.length > 0,
+        )
+      : [];
 
-    for (const libraryPath of configuredLibraries) {
+    for (const libraryPath of [...modelicaPath, ...configuredLibraries]) {
       await server.#loadConfiguredLibrary(libraryPath);
     }
+    server.#configuredLibraryPaths = new Set(configuredLibraries.map((value) => path.resolve(value)));
 
     logger.debug('Initialized');
     return server;
@@ -347,21 +352,30 @@ export class ModelicaServer {
   }
 
   /**
-   * Loads libraries added to `modelica.libraries` after startup, so a
+   * Synchronizes libraries with `modelica.libraries` after startup, so a
    * client can push an updated library list without restarting the server.
    */
   private async onDidChangeConfiguration(params: LSP.DidChangeConfigurationParams): Promise<void> {
     logger.debug('onDidChangeConfiguration');
     const settings = params.settings as { modelica?: { libraries?: unknown } } | undefined;
-    const libraries = Array.isArray(settings?.modelica?.libraries)
-      ? settings.modelica.libraries.filter(
-          (value): value is string => typeof value === 'string' && value.length > 0,
-        )
-      : [];
+    if (!Array.isArray(settings?.modelica?.libraries)) {
+      return;
+    }
+    const libraries = settings.modelica.libraries.filter(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
+    const configuredLibraryPaths = new Set(libraries.map((value) => path.resolve(value)));
+
+    for (const previousPath of this.#configuredLibraryPaths) {
+      if (!configuredLibraryPaths.has(previousPath)) {
+        this.#unloadLibrary(url.pathToFileURL(previousPath).toString());
+      }
+    }
 
     for (const libraryPath of libraries) {
       await this.#loadConfiguredLibrary(libraryPath);
     }
+    this.#configuredLibraryPaths = configuredLibraryPaths;
   }
 
   // TODO: We currently treat goto declaration and goto definition the same,
