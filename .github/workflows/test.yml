@@ -98,6 +98,10 @@ jobs:
           - os: windows-latest
             arch: x64
             artifact_name: modelica-language-server-windows-x64.exe
+          # arm64 Linux. The x64 Linux binary comes from the `build` job above.
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            artifact_name: modelica-language-server-linux-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -171,6 +175,11 @@ jobs:
           name: modelica-language-server-windows-x64.exe
           path: server-release/
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: modelica-language-server-linux-arm64
+          path: server-release/
+
       - name: Release
         uses: softprops/action-gh-release@v3
         with:
@@ -180,6 +189,7 @@ jobs:
             server-release/tree-sitter-modelica.wasm
             server-release/web-tree-sitter.wasm
             server-release/modelica-language-server-linux-x64
+            server-release/modelica-language-server-linux-arm64
             server-release/modelica-language-server-macos-arm64
             server-release/modelica-language-server-macos-x64
             server-release/modelica-language-server-windows-x64.exe
