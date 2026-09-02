@@ -30,6 +30,13 @@
   ],
   "main": "./out/client",
   "contributes": {
+    "commands": [
+      {
+        "command": "modelica.loadLibrary",
+        "title": "Load Library",
+        "category": "Modelica"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "Modelica Language Server",

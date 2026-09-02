@@ -35,7 +35,13 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { workspace, ExtensionContext } from 'vscode';
+import {
+  commands,
+  window,
+  workspace,
+  ConfigurationTarget,
+  ExtensionContext,
+} from 'vscode';
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -44,6 +50,37 @@ import {
 } from 'vscode-languageclient/node';
 
 let client: LanguageClient;
+
+/**
+ * Options controlling the language client.
+ *
+ * Exported so tests can assert the configuration synchronization below without
+ * starting a server.
+ */
+export function createClientOptions(): LanguageClientOptions {
+  return {
+    // Register the server for modelica text documents
+    documentSelector: [
+      {
+        language: 'modelica',
+        scheme: 'file',
+      },
+    ],
+    synchronize: {
+      // Notify the server about file changes to '.clientrc files contained in the workspace
+      fileEvents: workspace.createFileSystemWatcher('**/.clientrc'),
+      // Forward `modelica.*` setting changes as `workspace/didChangeConfiguration`.
+      // Without this the client sends `{settings: null}` and the server never sees
+      // libraries added to `modelica.libraries` after startup. Naming the section
+      // makes the payload `{modelica: {libraries: [...]}}`, which is the shape
+      // `ModelicaServer.onDidChangeConfiguration` reads.
+      configurationSection: 'modelica',
+    },
+    initializationOptions: {
+      libraries: workspace.getConfiguration('modelica').get<string[]>('libraries', []),
+    },
+  };
+}
 
 export function activate(context: ExtensionContext): void {
   // The server is implemented in node, point to packed module
@@ -62,23 +99,7 @@ export function activate(context: ExtensionContext): void {
     },
   };
 
-  // Options to control the language client
-  const clientOptions: LanguageClientOptions = {
-    // Register the server for modelica text documents
-    documentSelector: [
-      {
-        language: 'modelica',
-        scheme: 'file',
-      },
-    ],
-    synchronize: {
-      // Notify the server about file changes to '.clientrc files contained in the workspace
-      fileEvents: workspace.createFileSystemWatcher('**/.clientrc'),
-    },
-    initializationOptions: {
-      libraries: workspace.getConfiguration('modelica').get<string[]>('libraries', []),
-    },
-  };
+  const clientOptions = createClientOptions();
 
   // Create the language client and start the client.
   client = new LanguageClient(
@@ -90,6 +111,69 @@ export function activate(context: ExtensionContext): void {
 
   // Start the client. This will also launch the server
   client.start();
+
+  context.subscriptions.push(
+    commands.registerCommand('modelica.loadLibrary', loadLibrary),
+  );
+}
+
+/**
+ * Prompts for Modelica library roots and adds them to `modelica.libraries`.
+ *
+ * Writing the setting makes the client send `workspace/didChangeConfiguration`,
+ * which a running server picks up to load the library without a restart. The
+ * server skips paths it has already loaded, so re-adding one is harmless, and
+ * it reports a directory with no `package.mo` back to the user itself.
+ */
+async function loadLibrary(): Promise<void> {
+  const picked = await window.showOpenDialog({
+    canSelectFiles: false,
+    canSelectFolders: true,
+    canSelectMany: true,
+    openLabel: 'Load Library',
+    title: 'Select Modelica library root directories',
+  });
+  if (picked === undefined || picked.length === 0) {
+    return;
+  }
+
+  // Store alongside the project when there is one, so the library list travels
+  // with it; a workspace write would fail outside a workspace.
+  const target = workspace.workspaceFolders
+    ? ConfigurationTarget.Workspace
+    : ConfigurationTarget.Global;
+
+  const configuration = workspace.getConfiguration('modelica');
+  const inspected = configuration.inspect<string[]>('libraries');
+  // Append to the value at this scope only. Using the effective (merged) value
+  // would copy entries from the other scopes into this one.
+  const scoped = (target === ConfigurationTarget.Workspace
+    ? inspected?.workspaceValue
+    : inspected?.globalValue) ?? [];
+  const effective = configuration.get<string[]>('libraries', []);
+
+  const updated = [...scoped];
+  const added: string[] = [];
+  for (const folder of picked) {
+    if (!effective.includes(folder.fsPath) && !updated.includes(folder.fsPath)) {
+      updated.push(folder.fsPath);
+      added.push(folder.fsPath);
+    }
+  }
+
+  if (added.length === 0) {
+    window.showInformationMessage(
+      picked.length === 1
+        ? 'Modelica: that library is already in "modelica.libraries".'
+        : 'Modelica: those libraries are already in "modelica.libraries".',
+    );
+    return;
+  }
+
+  await configuration.update('libraries', updated, target);
+  window.showInformationMessage(
+    `Modelica: loading ${added.map((p) => path.basename(p)).join(', ')}.`,
+  );
 }
 
 export function deactivate(): Thenable<void> | undefined {

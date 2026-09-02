@@ -56,6 +56,10 @@ export class ModelicaServer {
   #analyzer: Analyzer;
   #connection: LSP.Connection;
   #documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(TextDocument);
+  // Absolute, resolved paths of libraries/workspaces already handed to the
+  // analyzer, so a later notification about the same folder is a no-op
+  // instead of loading it (and all its documents) a second time.
+  #loadedLibraryPaths: Set<string> = new Set();
 
   private constructor(analyzer: Analyzer, connection: LSP.Connection) {
     this.#analyzer = analyzer;
@@ -75,15 +79,11 @@ export class ModelicaServer {
 
     const parser = await initializeParser();
     const analyzer = new Analyzer(parser);
+    const server = new ModelicaServer(analyzer, connection);
+
     if (workspaceFolders != null) {
       for (const workspace of workspaceFolders) {
-        try {
-          await analyzer.loadLibrary(workspace.uri, true);
-        } catch (err) {
-          logger.error(
-            `Failed to load workspace '${workspace.uri}': ${err instanceof Error ? err.message : err}`,
-          );
-        }
+        await server.#tryLoadLibrary(workspace.uri, true, `workspace '${workspace.uri}'`);
       }
     }
 
@@ -103,26 +103,68 @@ export class ModelicaServer {
     ];
 
     for (const libraryPath of configuredLibraries) {
-      const libraryUri = url.pathToFileURL(path.resolve(libraryPath)).toString();
-      logger.debug(`Loading configured library '${libraryPath}'`);
-      try {
-        const loaded = await analyzer.loadLibrary(libraryUri, false);
-        if (!loaded) {
-          const message =
-            `Could not load Modelica library '${libraryPath}': the path does not exist or has no ` +
-            `'package.mo'. Remove or fix this entry in the "modelica.libraries" setting to stop loading it.`;
-          logger.warn(message);
-          connection.window.showWarningMessage(message);
-        }
-      } catch (err) {
-        logger.error(
-          `Failed to load configured library '${libraryPath}': ${err instanceof Error ? err.message : err}`,
-        );
-      }
+      await server.#loadConfiguredLibrary(libraryPath);
     }
 
     logger.debug('Initialized');
-    return new ModelicaServer(analyzer, connection);
+    return server;
+  }
+
+  /**
+   * Loads a library or workspace folder into the analyzer, skipping it if
+   * the same path has already been loaded (e.g. because it was already
+   * loaded at startup, or a duplicate change notification arrived).
+   *
+   * @param uri uri to the library/workspace root
+   * @param isWorkspace `true` if this is a user workspace/project, `false` if
+   *     this is a library.
+   * @param description human-readable description for log messages
+   * @returns `'loaded'`, `'duplicate'` if already loaded, or `'failed'` if
+   *     the path does not exist or has no `package.mo`.
+   */
+  async #tryLoadLibrary(
+    uri: LSP.URI,
+    isWorkspace: boolean,
+    description: string,
+  ): Promise<'loaded' | 'duplicate' | 'failed'> {
+    const normalizedPath = path.resolve(url.fileURLToPath(uri));
+    if (this.#loadedLibraryPaths.has(normalizedPath)) {
+      logger.debug(`Skipping ${description}: already loaded.`);
+      return 'duplicate';
+    }
+
+    try {
+      const loaded = await this.#analyzer.loadLibrary(uri, isWorkspace);
+      if (loaded) {
+        this.#loadedLibraryPaths.add(normalizedPath);
+        return 'loaded';
+      }
+      return 'failed';
+    } catch (err) {
+      logger.error(`Failed to load ${description}: ${err instanceof Error ? err.message : err}`);
+      return 'failed';
+    }
+  }
+
+  /**
+   * Resolves a `modelica.libraries`-style path and loads it, warning the
+   * user via the client if it could not be loaded.
+   */
+  async #loadConfiguredLibrary(libraryPath: string): Promise<void> {
+    const libraryUri = url.pathToFileURL(path.resolve(libraryPath)).toString();
+    logger.debug(`Loading configured library '${libraryPath}'`);
+    const result = await this.#tryLoadLibrary(
+      libraryUri,
+      false,
+      `configured library '${libraryPath}'`,
+    );
+    if (result === 'failed') {
+      const message =
+        `Could not load Modelica library '${libraryPath}': the path does not exist or has no ` +
+        `'package.mo'. Remove or fix this entry in the "modelica.libraries" setting to stop loading it.`;
+      logger.warn(message);
+      this.#connection.window.showWarningMessage(message);
+    }
   }
 
   /**
@@ -162,6 +204,12 @@ export class ModelicaServer {
     connection.onShutdown(this.onShutdown.bind(this));
     connection.onDidChangeTextDocument(this.onDidChangeTextDocument.bind(this));
     connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
+    connection.onDidChangeConfiguration(this.onDidChangeConfiguration.bind(this));
+    // Workspace folder change subscription is done in `onInitialized`, not
+    // here: subscribing during `onInitialize` (before the server capabilities
+    // are filled) makes the library send a premature, redundant dynamic
+    // `client/registerCapability`, which the client rejects and crashes the
+    // process on the unhandled rejection.
     connection.onDeclaration(this.onDeclaration.bind(this));
     connection.onDefinition(this.onDefinition.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
@@ -170,6 +218,25 @@ export class ModelicaServer {
 
   private async onInitialized(): Promise<void> {
     logger.debug('onInitialized');
+
+    // Subscribe synchronously, before the first `await` below: otherwise a
+    // `workspace/didChangeWorkspaceFolders` notification arriving while that
+    // await is pending is delivered before the handler is attached and lost.
+    // Capabilities are already filled by now, so this sends no dynamic
+    // registration. It throws if the client didn't advertise the
+    // `workspace.workspaceFolders` capability, which must not take down the
+    // rest of the session.
+    try {
+      this.#connection.workspace.onDidChangeWorkspaceFolders(
+        this.onDidChangeWorkspaceFolders.bind(this),
+      );
+    } catch (err) {
+      logger.warn(
+        `Client does not support workspace folder change notifications; libraries added ` +
+          `after startup will require a restart. (${err instanceof Error ? err.message : err})`,
+      );
+    }
+
     await connection.client.register(
       new LSP.ProtocolNotificationType('workspace/didChangeWatchedFiles'),
       {
@@ -219,6 +286,81 @@ export class ModelicaServer {
           break;
         }
       }
+    }
+  }
+
+  /**
+   * Loads libraries added to the workspace and unloads those removed after
+   * startup, so a client can make a new library available (e.g. to resolve an
+   * external `within` reference) or free one it no longer needs, without
+   * restarting the server.
+   */
+  private async onDidChangeWorkspaceFolders(
+    event: LSP.WorkspaceFoldersChangeEvent,
+  ): Promise<void> {
+    logger.debug(
+      `onDidChangeWorkspaceFolders: +${event.added.length} folder(s), -${event.removed.length} folder(s)`,
+    );
+
+    for (const folder of event.added) {
+      const result = await this.#tryLoadLibrary(folder.uri, true, `workspace folder '${folder.uri}'`);
+      if (result === 'loaded') {
+        logger.info(`Loaded newly added workspace folder '${folder.uri}'.`);
+      }
+    }
+
+    for (const folder of event.removed) {
+      this.#unloadLibrary(folder.uri);
+    }
+  }
+
+  /**
+   * Unloads every library under a removed workspace folder and forgets its
+   * path so the same folder can be added again later.
+   */
+  #unloadLibrary(uri: LSP.URI): void {
+    let normalizedRoot: string;
+    try {
+      normalizedRoot = path.resolve(url.fileURLToPath(uri));
+    } catch (err) {
+      logger.warn(
+        `Ignoring removed workspace folder with non-file URI '${uri}': ` +
+          `${err instanceof Error ? err.message : err}`,
+      );
+      return;
+    }
+
+    const removedPaths = this.#analyzer.unloadLibrary(uri);
+    this.#loadedLibraryPaths.delete(normalizedRoot);
+    for (const removed of removedPaths) {
+      this.#loadedLibraryPaths.delete(path.resolve(removed));
+    }
+
+    if (removedPaths.length > 0) {
+      logger.info(
+        `Unloaded ${removedPaths.length} librar${removedPaths.length === 1 ? 'y' : 'ies'} ` +
+          `under removed workspace folder '${uri}'.`,
+      );
+    } else {
+      logger.debug(`No loaded libraries found under removed workspace folder '${uri}'.`);
+    }
+  }
+
+  /**
+   * Loads libraries added to `modelica.libraries` after startup, so a
+   * client can push an updated library list without restarting the server.
+   */
+  private async onDidChangeConfiguration(params: LSP.DidChangeConfigurationParams): Promise<void> {
+    logger.debug('onDidChangeConfiguration');
+    const settings = params.settings as { modelica?: { libraries?: unknown } } | undefined;
+    const libraries = Array.isArray(settings?.modelica?.libraries)
+      ? settings.modelica.libraries.filter(
+          (value): value is string => typeof value === 'string' && value.length > 0,
+        )
+      : [];
+
+    for (const libraryPath of libraries) {
+      await this.#loadConfiguredLibrary(libraryPath);
     }
   }
 

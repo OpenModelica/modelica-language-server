@@ -70,6 +70,31 @@ export class ModelicaProject {
   }
 
   /**
+   * Removes every library whose root is at or below `rootPath` (e.g. all
+   * libraries discovered under a removed workspace folder), dropping their
+   * loaded documents. Libraries and standalone documents outside `rootPath`
+   * are left untouched.
+   *
+   * @param rootPath absolute path of the removed workspace/library root
+   * @returns the root paths of the libraries that were removed
+   */
+  public removeLibrariesUnder(rootPath: string): string[] {
+    const removed: string[] = [];
+    for (let i = this.#libraries.length - 1; i >= 0; i--) {
+      const libraryPath = this.#libraries[i].path;
+      const relative = path.relative(rootPath, libraryPath);
+      const isAtOrBelow =
+        libraryPath === rootPath ||
+        (relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative));
+      if (isAtOrBelow) {
+        removed.push(libraryPath);
+        this.#libraries.splice(i, 1);
+      }
+    }
+    return removed;
+  }
+
+  /**
    * Finds the document identified by the given path.
    *
    * Will load the document from disk if unloaded and `options.load` is `true` or `undefined`.
