@@ -72,13 +72,18 @@ export class ModelicaProject {
   /**
    * Removes every library whose root is at or below `rootPath` (e.g. all
    * libraries discovered under a removed workspace folder), dropping their
-   * loaded documents. Libraries and standalone documents outside `rootPath`
-   * are left untouched.
+   * loaded documents. The optional predicate can retain libraries that are
+   * still owned by another source. Libraries and standalone documents outside
+   * `rootPath` are left untouched.
    *
    * @param rootPath absolute path of the removed workspace/library root
+   * @param shouldRemove predicate deciding which matching libraries to remove
    * @returns the root paths of the libraries that were removed
    */
-  public removeLibrariesUnder(rootPath: string): string[] {
+  public removeLibrariesUnder(
+    rootPath: string,
+    shouldRemove: (library: ModelicaLibrary) => boolean = () => true,
+  ): string[] {
     const removed: string[] = [];
     for (let i = this.#libraries.length - 1; i >= 0; i--) {
       const libraryPath = this.#libraries[i].path;
@@ -86,7 +91,7 @@ export class ModelicaProject {
       const isAtOrBelow =
         libraryPath === rootPath ||
         (relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative));
-      if (isAtOrBelow) {
+      if (isAtOrBelow && shouldRemove(this.#libraries[i])) {
         removed.push(libraryPath);
         this.#libraries.splice(i, 1);
       }
