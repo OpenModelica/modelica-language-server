@@ -90,7 +90,9 @@ jobs:
           - os: macos-latest
             arch: arm64
             artifact_name: modelica-language-server-macos-arm64
-          - os: macos-13
+          # Intel macOS. macos-13 was retired, so a job asking for it never gets
+          # a runner: it queues until the 24 h limit and is cancelled.
+          - os: macos-15-intel
             arch: x64
             artifact_name: modelica-language-server-macos-x64
           - os: windows-latest
