@@ -89,16 +89,16 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^26.1.0",
-    "@typescript-eslint/eslint-plugin": "^8.62.1",
+    "@types/node": "^26.4.0",
+    "@typescript-eslint/eslint-plugin": "^8.68.0",
     "@typescript-eslint/parser": "^8.60.1",
-    "esbuild": "^0.28.0",
-    "eslint": "^10.6.0",
-    "globals": "^17.7.0",
-    "mocha": "^11.7.6",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0",
+    "mocha": "^11.8.0",
     "run-script-os": "^1.1.6",
     "ts-node": "^10.9.2",
-    "tsx": "^4.19.0",
-    "typescript": "^6.0.3"
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
   }
 }
