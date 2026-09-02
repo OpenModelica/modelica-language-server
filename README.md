@@ -1,6 +1,7 @@
 # Modelica Language Server
 
 [![Build][badge-build]][workflow-test]
+[![Coverage Status][badge-coverage]][coverage-project]
 
 A very early version of a Modelica Language Server based on
 [OpenModelica/tree-sitter-modelica][tree-sitter-modelica].
@@ -164,7 +165,9 @@ This package was initially developed by
 [Hochschule Bielefeld - University of Applied Sciences and Arts](hsbi.de).
 
 [badge-build]: https://github.com/OpenModelica/modelica-language-server/actions/workflows/test.yml/badge.svg
+[badge-coverage]: https://coveralls.io/repos/github/OpenModelica/modelica-language-server/badge.svg?branch=main
 [bash-language-server]: https://github.com/bash-lsp/bash-language-server
+[coverage-project]: https://coveralls.io/github/OpenModelica/modelica-language-server?branch=main
 [ext-dev-host]: https://code.visualstudio.com/api/get-started/your-first-extension#:~:text=Then%2C%20inside%20the%20editor%2C%20press%20F5.%20This%20will%20compile%20and%20run%20the%20extension%20in%20a%20new%20Extension%20Development%20Host%20window.
 [ext-metamodelica]: https://marketplace.visualstudio.com/items?itemName=AnHeuermann.metamodelica
 [good-first-issue]: https://github.com/OpenModelica/modelica-language-server/labels/good%20first%20issue

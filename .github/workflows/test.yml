@@ -43,8 +43,14 @@ jobs:
       - name: ESLint
         run: npm run lint
 
-      - name: Test language server
-        run: npm run test:server
+      - name: Test language server with coverage
+        run: npm run test:server:coverage
+
+      - name: Upload server coverage to Coveralls
+        uses: coverallsapp/github-action@v2.3.8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: server/coverage/lcov.info
 
       - name: Test language server client
         run: |
