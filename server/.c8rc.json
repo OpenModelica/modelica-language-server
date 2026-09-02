@@ -1,0 +1,14 @@
+{
+  "all": true,
+  "src": ["src"],
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/test/**/*.ts"],
+  "excludeAfterRemap": true,
+  "reporter": ["text", "lcovonly", "cobertura"],
+  "reportsDir": "coverage",
+  "checkCoverage": true,
+  "lines": 60,
+  "statements": 60,
+  "functions": 70,
+  "branches": 60
+}
