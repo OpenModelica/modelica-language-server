@@ -435,6 +435,54 @@ describe('runtime library loading', () => {
     }
   });
 
+  it('keeps a library available when it is also a workspace folder', async function () {
+    this.timeout(20_000);
+
+    const client = new LspTestClient();
+    try {
+      const libAUri = fileUri(LIB_A);
+      const libBUri = fileUri(LIB_B);
+      const nUri = fileUri(FILE_N);
+      const nText = fs.readFileSync(FILE_N, 'utf8');
+      const position = positionOf(nText, 'extends RuntimeLoadLibA.M', 'RuntimeLoadLibA.M');
+
+      await client.request('initialize', {
+        processId: process.pid,
+        rootUri: libBUri,
+        workspaceFolders: [
+          { uri: libAUri, name: 'RuntimeLoadLibA' },
+          { uri: libBUri, name: 'RuntimeLoadLibB' },
+        ],
+        capabilities: { workspace: { workspaceFolders: true, didChangeWorkspaceFolders: true } },
+        initializationOptions: { libraries: [LIB_A] },
+      });
+      client.notify('initialized', {});
+      client.notify('textDocument/didOpen', {
+        textDocument: { uri: nUri, languageId: 'modelica', version: 1, text: nText },
+      });
+
+      const before = await waitForDefinition(client, nUri, position, 5_000);
+      assert.ok(Array.isArray(before) && before.length > 0, 'libA should resolve initially');
+
+      client.notify('workspace/didChangeConfiguration', {
+        settings: { modelica: { libraries: [] } },
+      });
+
+      assert.ok(
+        await client.waitForLog('No loaded libraries found under removed workspace folder', 5_000),
+        'the workspace-owned library should not be unloaded',
+      );
+      const after = await waitForDefinition(client, nUri, position, 5_000);
+      assert.ok(
+        Array.isArray(after) && after.length > 0,
+        'libA should remain available through the workspace after config removal',
+      );
+      assert.equal(client.hasExited, false, `server exited (code ${client.exitCode})`);
+    } finally {
+      await client.dispose();
+    }
+  });
+
   it('treats re-announcing an already-loaded library as a no-op without disturbing resolution', async function () {
     this.timeout(20_000);
 

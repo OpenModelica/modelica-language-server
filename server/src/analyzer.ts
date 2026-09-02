@@ -119,11 +119,34 @@ export default class Analyzer {
    * without restarting the server.
    *
    * @param uri uri to the library/workspace root
+   * @param options optional ownership filters for configuration-driven unloads
    * @returns the file-system paths of the libraries that were unloaded
    */
-  public unloadLibrary(uri: LSP.URI): string[] {
+  public unloadLibrary(
+    uri: LSP.URI,
+    options?: { preserveWorkspaces?: boolean; preservePaths?: ReadonlySet<string> },
+  ): string[] {
     const rootPath = path.resolve(url.fileURLToPath(uri));
-    return this.#project.removeLibrariesUnder(rootPath);
+    const isAtOrBelow = (parent: string, child: string): boolean => {
+      const relative = path.relative(parent, child);
+      return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+    };
+
+    return this.#project.removeLibrariesUnder(rootPath, (library) => {
+      if (options?.preserveWorkspaces && library.isWorkspace) {
+        return false;
+      }
+
+      // A library loaded through modelicaPath must remain available even if
+      // the same path is later removed from modelica.libraries.
+      for (const preservedPath of options?.preservePaths ?? []) {
+        if (isAtOrBelow(path.resolve(preservedPath), path.resolve(library.path))) {
+          return false;
+        }
+      }
+
+      return true;
+    });
   }
 
   /**

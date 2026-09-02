@@ -64,6 +64,9 @@ export class ModelicaServer {
   // these separate from loaded paths so a shrunken configuration can unload
   // roots that disappeared from it.
   #configuredLibraryPaths: Set<string> = new Set();
+  // modelicaPath libraries are startup-only, but may overlap with a later
+  // modelica.libraries update and must not be unloaded by that update.
+  #modelicaPathLibraryPaths: Set<string> = new Set();
 
   private constructor(analyzer: Analyzer, connection: LSP.Connection) {
     this.#analyzer = analyzer;
@@ -109,6 +112,7 @@ export class ModelicaServer {
     for (const libraryPath of [...modelicaPath, ...configuredLibraries]) {
       await server.#loadConfiguredLibrary(libraryPath);
     }
+    server.#modelicaPathLibraryPaths = new Set(modelicaPath.map((value) => path.resolve(value)));
     server.#configuredLibraryPaths = new Set(configuredLibraries.map((value) => path.resolve(value)));
 
     logger.debug('Initialized');
@@ -323,7 +327,10 @@ export class ModelicaServer {
    * Unloads every library under a removed workspace folder and forgets its
    * path so the same folder can be added again later.
    */
-  #unloadLibrary(uri: LSP.URI): void {
+  #unloadLibrary(
+    uri: LSP.URI,
+    options?: { preserveWorkspaces?: boolean; preservePaths?: ReadonlySet<string> },
+  ): void {
     let normalizedRoot: string;
     try {
       normalizedRoot = path.resolve(url.fileURLToPath(uri));
@@ -335,8 +342,10 @@ export class ModelicaServer {
       return;
     }
 
-    const removedPaths = this.#analyzer.unloadLibrary(uri);
-    this.#loadedLibraryPaths.delete(normalizedRoot);
+    const removedPaths = this.#analyzer.unloadLibrary(uri, options);
+    if (!options?.preserveWorkspaces) {
+      this.#loadedLibraryPaths.delete(normalizedRoot);
+    }
     for (const removed of removedPaths) {
       this.#loadedLibraryPaths.delete(path.resolve(removed));
     }
@@ -368,7 +377,10 @@ export class ModelicaServer {
 
     for (const previousPath of this.#configuredLibraryPaths) {
       if (!configuredLibraryPaths.has(previousPath)) {
-        this.#unloadLibrary(url.pathToFileURL(previousPath).toString());
+        this.#unloadLibrary(url.pathToFileURL(previousPath).toString(), {
+          preserveWorkspaces: true,
+          preservePaths: this.#modelicaPathLibraryPaths,
+        });
       }
     }
 
