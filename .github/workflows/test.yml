@@ -83,9 +83,63 @@ jobs:
           name: server-release
           path: server-release/
 
+  build-binaries:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            arch: arm64
+            artifact_name: modelica-language-server-macos-arm64
+          # Intel macOS. macos-13 was retired, so a job asking for it never gets
+          # a runner: it queues until the 24 h limit and is cancelled.
+          - os: macos-15-intel
+            arch: x64
+            artifact_name: modelica-language-server-macos-x64
+          - os: windows-latest
+            arch: x64
+            artifact_name: modelica-language-server-windows-x64.exe
+          # arm64 Linux. The x64 Linux binary comes from the `build` job above.
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            artifact_name: modelica-language-server-linux-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Build standalone binary
+        working-directory: server
+        run: npm run build:standalone
+
+      - name: Stage binary
+        working-directory: server
+        shell: bash
+        run: |
+          mkdir -p ../server-release
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp out/modelica-language-server.exe ../server-release/${{ matrix.artifact_name }}
+          else
+            cp out/modelica-language-server ../server-release/${{ matrix.artifact_name }}
+          fi
+
+      - name: Archive binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: server-release/${{ matrix.artifact_name }}
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: [build, build-binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -106,6 +160,26 @@ jobs:
           name: server-release
           path: server-release/
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: modelica-language-server-macos-arm64
+          path: server-release/
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: modelica-language-server-macos-x64
+          path: server-release/
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: modelica-language-server-windows-x64.exe
+          path: server-release/
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: modelica-language-server-linux-arm64
+          path: server-release/
+
       - name: Release
         uses: softprops/action-gh-release@v3
         with:
@@ -115,6 +189,10 @@ jobs:
             server-release/tree-sitter-modelica.wasm
             server-release/web-tree-sitter.wasm
             server-release/modelica-language-server-linux-x64
+            server-release/modelica-language-server-linux-arm64
+            server-release/modelica-language-server-macos-arm64
+            server-release/modelica-language-server-macos-x64
+            server-release/modelica-language-server-windows-x64.exe
           fail_on_unmatched_files: true
           generate_release_notes: true
           append_body: true

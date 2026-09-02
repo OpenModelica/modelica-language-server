@@ -20,7 +20,11 @@ const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
 const BINARY_NAME = IS_WIN ? 'modelica-language-server.exe' : 'modelica-language-server';
 const OUT_BINARY = path.join(OUT_DIR, BINARY_NAME);
-const POSTJECT = path.join(__dirname, '..', 'node_modules', '.bin', 'postject');
+// Resolve postject's CLI script directly instead of the node_modules/.bin shim.
+// On Windows npm creates postject.cmd there (not a bare "postject" file), so
+// execFileSync of the bare name fails ENOENT. Invoking the JS entry under node
+// works uniformly across platforms.
+const POSTJECT_CLI = require.resolve('postject/dist/cli.js');
 
 function run(cmd, args, opts) {
   console.log(`  $ ${cmd} ${args.join(' ')}`);
@@ -53,7 +57,7 @@ const postjectArgs = [
 if (IS_MAC) {
   postjectArgs.push('--macho-segment-name', 'NODE_SEA');
 }
-run(POSTJECT, postjectArgs);
+run(process.execPath, [POSTJECT_CLI, ...postjectArgs]);
 
 // 4. Re-sign on macOS (ad-hoc, sufficient for local use; CI can use a real identity).
 if (IS_MAC) {
