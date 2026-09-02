@@ -7,8 +7,8 @@
     "lsp",
     "openmodelica"
   ],
-  "version": "0.3.1",
-  "author": "Andreas Heuermann, Osman Karabel, Evan Hedbor, PaddiM8",
+  "version": "0.3.2",
+  "author": "Andreas Heuermann, Osman Karabel, Evan Hedbor, PaddiM8, John Tinnerholm",
   "license": "(AGPL-3.0-only OR LicenseRef-OSMC-PL-1-8)",
   "engines": {
     "node": ">=20"
