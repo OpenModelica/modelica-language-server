@@ -67,6 +67,10 @@ export class ModelicaServer {
   // modelicaPath libraries are startup-only, but may overlap with a later
   // modelica.libraries update and must not be unloaded by that update.
   #modelicaPathLibraryPaths: Set<string> = new Set();
+  // Whether the client passed library roots through `initializationOptions`.
+  // Such a client drives libraries through configuration rather than workspace
+  // folders, so it does not need workspace folder change notifications.
+  #configuresLibrariesAtInitialization = false;
 
   private constructor(analyzer: Analyzer, connection: LSP.Connection) {
     this.#analyzer = analyzer;
@@ -77,10 +81,11 @@ export class ModelicaServer {
     connection: LSP.Connection,
     { workspaceFolders, initializationOptions }: LSP.InitializeParams,
   ): Promise<ModelicaServer> {
-    // Initialize logger
+    // Initialize logger. The level is deliberately not set here: forcing
+    // 'debug' sends every message to the client and leaves no way to turn the
+    // noise off, because an explicit option wins over MODELICA_IDE_LOG_LEVEL.
     setLoggerOptions({
       connection,
-      logLevel: 'debug',
     });
     logger.debug('Initializing...');
 
@@ -114,6 +119,7 @@ export class ModelicaServer {
     }
     server.#modelicaPathLibraryPaths = new Set(modelicaPath.map((value) => path.resolve(value)));
     server.#configuredLibraryPaths = new Set(configuredLibraries.map((value) => path.resolve(value)));
+    server.#configuresLibrariesAtInitialization = modelicaPath.length > 0 || configuredLibraries.length > 0;
 
     logger.debug('Initialized');
     return server;
@@ -240,10 +246,22 @@ export class ModelicaServer {
         this.onDidChangeWorkspaceFolders.bind(this),
       );
     } catch (err) {
-      logger.warn(
-        `Client does not support workspace folder change notifications; libraries added ` +
-          `after startup will require a restart. (${err instanceof Error ? err.message : err})`,
-      );
+      const reason = err instanceof Error ? err.message : err;
+      if (this.#configuresLibrariesAtInitialization) {
+        // The client already passed libraries through `initializationOptions`,
+        // so it can add more by sending `workspace/didChangeConfiguration`.
+        // Warning that a restart is needed would be wrong for such a client.
+        logger.debug(
+          `Client does not support workspace folder change notifications; libraries are ` +
+            `taken from the configuration instead. (${reason})`,
+        );
+      } else {
+        logger.warn(
+          `Client does not support workspace folder change notifications and passed no ` +
+            `libraries at initialization; libraries can only be added by sending ` +
+            `workspace/didChangeConfiguration. (${reason})`,
+        );
+      }
     }
 
     await connection.client.register(

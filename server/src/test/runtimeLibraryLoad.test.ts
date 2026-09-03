@@ -81,13 +81,26 @@ class LspTestClient {
   #exitCode: number | null | undefined = undefined;
   #logs: string[] = [];
 
-  constructor() {
+  /**
+   * @param logLevel value for MODELICA_IDE_LOG_LEVEL. Most tests assert on
+   *     `logger.debug` output, which the server only sends at 'debug'; the
+   *     server's own default is 'info'. Pass `null` to leave the variable unset
+   *     and exercise that default.
+   */
+  constructor(logLevel: string | null = 'debug') {
     assert.ok(
       fs.existsSync(SERVER_BUNDLE),
       `Server bundle not found at ${SERVER_BUNDLE}. Run 'npm run esbuild' before the tests.`,
     );
+    const env = { ...process.env };
+    if (logLevel === null) {
+      delete env.MODELICA_IDE_LOG_LEVEL;
+    } else {
+      env.MODELICA_IDE_LOG_LEVEL = logLevel;
+    }
     this.#child = spawn(process.execPath, [SERVER_BUNDLE, '--stdio'], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      env,
     });
     this.#child.stdout.on('data', (chunk: Buffer) => this.#onData(chunk));
     this.#child.on('exit', (code) => {
@@ -313,6 +326,103 @@ describe('runtime library loading', () => {
       assert.ok(response.result, 'initialize should return a result');
     } finally {
       await client.dispose();
+    }
+  });
+
+  it('does not send debug messages at the default log level', async function () {
+    this.timeout(20_000);
+
+    // The server used to hardcode `logLevel: 'debug'`, which outranks
+    // MODELICA_IDE_LOG_LEVEL and left no way to quieten it. Every editor showing
+    // window/logMessage then got a debug line per hover and per definition.
+    const client = new LspTestClient(null);
+    try {
+      await client.request('initialize', {
+        processId: process.pid,
+        rootUri: null,
+        capabilities: {},
+        initializationOptions: {},
+      });
+      client.notify('initialized', {});
+      // Long enough for the debug lines of initialize/onInitialized to arrive
+      // if they were being sent at all.
+      await client.waitForLog('onInitialized', 1_000);
+      assert.deepEqual(
+        client.logs.filter((l) => l.includes(' DEBUG ')),
+        [],
+        `no DEBUG messages should be sent at the default log level; logs: ${client.logs.join(' | ')}`,
+      );
+    } finally {
+      await client.dispose();
+    }
+  });
+
+  it('sends debug messages when MODELICA_IDE_LOG_LEVEL requests them', async function () {
+    this.timeout(20_000);
+
+    const client = new LspTestClient('debug');
+    try {
+      await client.request('initialize', {
+        processId: process.pid,
+        rootUri: null,
+        capabilities: {},
+        initializationOptions: {},
+      });
+      client.notify('initialized', {});
+      assert.ok(
+        await client.waitForLog(' DEBUG ', 5_000),
+        `expected DEBUG messages with MODELICA_IDE_LOG_LEVEL=debug; logs: ${client.logs.join(' | ')}`,
+      );
+    } finally {
+      await client.dispose();
+    }
+  });
+
+  it('warns about missing workspace folder support only when no libraries were configured', async function () {
+    this.timeout(20_000);
+
+    // A client that has no workspace folder support and passed no libraries
+    // really is stuck until it sends didChangeConfiguration, so warn.
+    const bare = new LspTestClient(null);
+    try {
+      await bare.request('initialize', {
+        processId: process.pid,
+        rootUri: null,
+        capabilities: {},
+        initializationOptions: {},
+      });
+      bare.notify('initialized', {});
+      assert.ok(
+        await bare.waitForLog('passed no libraries at initialization', 5_000),
+        `expected the workspace folder warning; logs: ${bare.logs.join(' | ')}`,
+      );
+    } finally {
+      await bare.dispose();
+    }
+
+    // A client that passed libraries through initializationOptions (OMEdit uses
+    // modelicaPath) drives libraries through configuration, so telling it that
+    // libraries need a restart is wrong.
+    const configured = new LspTestClient('debug');
+    try {
+      await configured.request('initialize', {
+        processId: process.pid,
+        rootUri: null,
+        capabilities: {},
+        initializationOptions: { modelicaPath: [LIB_A] },
+      });
+      configured.notify('initialized', {});
+      assert.ok(
+        await configured.waitForLog('taken from the configuration instead', 5_000),
+        `expected the quiet variant; logs: ${configured.logs.join(' | ')}`,
+      );
+      assert.deepEqual(
+        configured.logs.filter((l) => l.includes('passed no libraries at initialization')),
+        [],
+        `a client that configured libraries should not be warned; logs: ${configured.logs.join(' | ')}`,
+      );
+    } finally {
+      await configured.dispose();
     }
   });
 
