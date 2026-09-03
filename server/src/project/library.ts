@@ -89,6 +89,15 @@ export class ModelicaLibrary {
       library.#path = path.dirname(library.#path);
     }
 
+    if (workspaceRootDocument.within.length > 0) {
+      // The name came from the child folder we were pointed at, so it named the
+      // subpackage rather than the library: loading 'Modelica 4.1.0/Blocks'
+      // produced a library called 'Blocks' rooted at 'Modelica 4.1.0', and
+      // nothing could then resolve 'Modelica.*' against it. Derive the name
+      // from the corrected root, the same way the constructor does.
+      library.#name = path.basename(library.#path).split(/\s/)[0];
+    }
+
     logger.debug(`Set library path to ${library.path}`);
 
     const allFiles = await fs.readdir(library.#path, { recursive: true, withFileTypes: true });

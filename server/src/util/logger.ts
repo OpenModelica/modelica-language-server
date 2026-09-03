@@ -96,8 +96,10 @@ export class Logger {
   }
 
   static MESSAGE_TYPE_TO_LOG_LEVEL_MSG: Record<LSP.MessageType, string> = {
-    [LSP.MessageType.Error]: 'ERROR ⛔️',
-    [LSP.MessageType.Warning]: 'WARNING ⛔️',
+    // Plain ASCII: OMEdit's Messages Browser renders these with a font that has
+    // no colour-emoji glyph, so an emoji here shows up as a replacement box.
+    [LSP.MessageType.Error]: 'ERROR',
+    [LSP.MessageType.Warning]: 'WARNING',
     [LSP.MessageType.Info]: 'INFO',
     [LSP.MessageType.Log]: 'LOG',
     [LSP.MessageType.Debug]: 'DEBUG',

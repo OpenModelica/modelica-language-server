@@ -58,6 +58,7 @@ const LIB_A = path.join(__dirname, 'fixtures', 'RuntimeLoadLibA');
 const LIB_B = path.join(__dirname, 'fixtures', 'RuntimeLoadLibB');
 const LIB_C = path.join(__dirname, 'fixtures', 'RuntimeLoadLibC');
 const FILE_N = path.join(LIB_B, 'N.mo');
+const FILE_M = path.join(LIB_A, 'M.mo');
 const FILE_P = path.join(LIB_C, 'P.mo');
 
 function fileUri(p: string): string {
@@ -241,6 +242,52 @@ async function initializeWithLibB(client: LspTestClient): Promise<void> {
 }
 
 describe('runtime library loading', () => {
+  it('resolves inside a document whose library was never announced', async function () {
+    this.timeout(20_000);
+
+    // What AnHeuermann hit in OpenModelica#15925: opening a file that belongs
+    // to a library the client never announced. The document declares a within
+    // clause, so it could not be loaded as a standalone document, and the
+    // server gave up with "not a part of any libraries" - nothing in the file
+    // resolved, not even a local declaration.
+    const client = new LspTestClient();
+    try {
+      const mUri = fileUri(FILE_M);
+      const mText = fs.readFileSync(FILE_M, 'utf8');
+      const lines = mText.split('\n');
+      const lineIndex = lines.findIndex((l) => l.includes('x = 1'));
+      assert.notEqual(lineIndex, -1, 'fixture file must contain the equation');
+      const position = { line: lineIndex, character: lines[lineIndex].indexOf('x') };
+
+      // No workspace folders and no configured libraries: the server knows
+      // nothing about RuntimeLoadLibA.
+      await client.request('initialize', {
+        processId: process.pid,
+        rootUri: null,
+        capabilities: {},
+        initializationOptions: {},
+      });
+      client.notify('initialized', {});
+      client.notify('textDocument/didOpen', {
+        textDocument: { uri: mUri, languageId: 'modelica', version: 1, text: mText },
+      });
+
+      const result = await waitForDefinition(client, mUri, position, 5_000);
+      assert.ok(
+        Array.isArray(result) && result.length > 0,
+        `expected 'x' to resolve once the enclosing library is discovered, got: ${JSON.stringify(result)}`,
+      );
+      const target = result[0] as { uri?: string; targetUri?: string };
+      assert.equal(
+        target.uri ?? target.targetUri,
+        mUri,
+        `expected the declaration in M.mo, got: ${JSON.stringify(result[0])}`,
+      );
+    } finally {
+      await client.dispose();
+    }
+  });
+
   it('resolves an external reference only after the library is announced without a restart', async function () {
     this.timeout(20_000);
 

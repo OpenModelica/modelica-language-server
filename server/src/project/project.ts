@@ -36,6 +36,7 @@
 import { Parser } from 'web-tree-sitter';
 import * as LSP from 'vscode-languageserver';
 import path from 'node:path';
+import * as fsSync from 'node:fs';
 
 import { ModelicaLibrary } from './library';
 import { ModelicaDocument } from './document';
@@ -188,8 +189,60 @@ export class ModelicaProject {
       return document;
     }
 
+    // The document declares a `within`, so it belongs to a library that has not
+    // been loaded. Load that library from disk rather than giving up: a client
+    // that never announced the library (or announced it only after the document
+    // was opened) would otherwise get no hover and no go-to-definition here.
+    const enclosingDocument = await this.#loadEnclosingLibrary(documentPath);
+    if (enclosingDocument !== undefined) {
+      return enclosingDocument;
+    }
+
     logger.debug(`Failed to add document '${documentPath}': not a part of any libraries.`);
     return undefined;
+  }
+
+  /**
+   * Loads the library that `documentPath` belongs to, discovering its root from
+   * the document's own directory.
+   *
+   * {@link ModelicaLibrary.load} walks up from the directory it is given to the
+   * real library root using the `within` depth of that directory's
+   * `package.mo`, so a file deep inside a library brings in the whole library.
+   *
+   * @param documentPath path to a document with a non-empty `within` clause
+   * @returns the loaded document, or `undefined` if no enclosing library could
+   *     be loaded
+   */
+  async #loadEnclosingLibrary(documentPath: string): Promise<ModelicaDocument | undefined> {
+    const directory = path.dirname(documentPath);
+    if (!fsSync.existsSync(path.join(directory, 'package.mo'))) {
+      // A loose file next to no `package.mo` is not part of a library on disk,
+      // so there is no root to discover.
+      return undefined;
+    }
+
+    let library: ModelicaLibrary;
+    try {
+      library = await ModelicaLibrary.load(this, directory, false);
+    } catch (err) {
+      logger.debug(
+        `Could not load the library enclosing '${documentPath}': ` +
+          `${err instanceof Error ? err.message : err}`,
+      );
+      return undefined;
+    }
+
+    this.addLibrary(library);
+
+    const document = library.documents.get(documentPath);
+    if (document === undefined) {
+      logger.debug(`Library '${library.name}' does not contain '${documentPath}'.`);
+      return undefined;
+    }
+
+    logger.debug(`Added document: ${documentPath}`);
+    return document;
   }
 
   /**

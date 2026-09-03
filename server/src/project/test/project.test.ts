@@ -35,12 +35,15 @@
 
 import { ModelicaProject, ModelicaLibrary } from '..';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { initializeParser } from '../../parser';
 
 const TEST_LIBRARY_PATH = path.join(__dirname, 'TestLibrary 1.0.0');
 const TEST_PACKAGE_PATH = path.join(TEST_LIBRARY_PATH, 'package.mo');
 const TEST_CLASS_PATH = path.join(TEST_LIBRARY_PATH, 'HalfAdder.mo');
+const SUB_PACKAGE_PATH = path.join(TEST_LIBRARY_PATH, 'Sub');
 
 const TEST_PACKAGE_CONTENT = `package TestLibrary
   annotation(version="1.0.0");
@@ -50,6 +53,21 @@ end TestLibrary;
 describe('ModelicaProject', () => {
   describe('an empty project', () => {
     let project: ModelicaProject;
+    let orphanDirectory: string;
+    let orphanPath: string;
+
+    before(() => {
+      // A document that belongs to no library on disk: it has a within clause,
+      // so it cannot be loaded as a standalone document, and there is no
+      // `package.mo` beside it, so no library root can be discovered either.
+      orphanDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'modelica-ls-test-'));
+      orphanPath = path.join(orphanDirectory, 'Orphan.mo');
+      fs.writeFileSync(orphanPath, 'within TestLibrary;\n\nmodel Orphan\nend Orphan;\n', 'utf-8');
+    });
+
+    after(() => {
+      fs.rmSync(orphanDirectory, { recursive: true, force: true });
+    });
 
     beforeEach(async () => {
       const parser = await initializeParser();
@@ -60,9 +78,48 @@ describe('ModelicaProject', () => {
       assert.equal(project.libraries.length, 0);
     });
 
-    it('updating and deleting documents does nothing', async () => {
-      assert(!await project.updateDocument(TEST_CLASS_PATH, 'file content'));
-      assert(!await project.removeDocument(TEST_CLASS_PATH));
+    it('updating and deleting documents outside any library does nothing', async () => {
+      // This used to be asserted with a document from TestLibrary. Such a
+      // document is now discovered and loaded on demand, so the claim only
+      // holds for a document no library on disk contains.
+      assert(!await project.updateDocument(orphanPath, 'file content'));
+      assert(!await project.removeDocument(orphanPath));
+    });
+
+    it('adds a document by discovering the library its within clause names', async () => {
+      // HalfAdder.mo declares `within TestLibrary;` and no library is loaded,
+      // so it can only be added by finding the library root on disk. A client
+      // that opens a file before (or without) announcing its library depends
+      // on this; otherwise the document is never loaded and nothing in it
+      // resolves.
+      const document = await project.addDocument(TEST_CLASS_PATH);
+      assert.ok(document, 'expected the document to be added');
+      assert.equal(project.libraries.length, 1);
+      assert.equal(project.libraries[0].name, 'TestLibrary');
+      // The whole library is loaded, not just the document that was opened.
+      assert.notEqual(await project.getDocument(TEST_PACKAGE_PATH), undefined);
+    });
+
+    it('updating a document discovers its library too', async () => {
+      assert(await project.updateDocument(TEST_CLASS_PATH, 'within TestLibrary;\n'));
+      assert.equal(project.libraries.length, 1);
+    });
+
+    it('does not add a document that no library on disk contains', async () => {
+      assert.equal(await project.addDocument(orphanPath), undefined);
+      assert.equal(project.libraries.length, 0);
+    });
+
+    it('names a library after its root, not the subfolder it was found from', async () => {
+      // ModelicaLibrary.load walks up to the real root when pointed at a child
+      // folder, but used to keep the child's name: loading
+      // 'TestLibrary 1.0.0/Sub' gave a library called 'Sub' rooted at
+      // 'TestLibrary 1.0.0', so nothing could resolve 'TestLibrary.*' against
+      // it. Discovering a library from a document inside a subpackage makes
+      // this the common case.
+      const library = await ModelicaLibrary.load(project, SUB_PACKAGE_PATH, false);
+      assert.equal(library.name, 'TestLibrary');
+      assert.equal(library.path, TEST_LIBRARY_PATH);
     });
   });
 
