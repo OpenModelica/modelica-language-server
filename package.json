@@ -99,6 +99,6 @@
     "run-script-os": "^1.1.6",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.3"
   }
 }
