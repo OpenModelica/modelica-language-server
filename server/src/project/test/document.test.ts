@@ -124,6 +124,25 @@ describe('ModelicaDocument', () => {
     assert.equal(document.tree.rootNode.descendantsOfType("annotation_clause").length, 1);
   });
 
+  it('reports line ranges and end-of-line characters', () => {
+    const content = 'package P\r\nend P;';
+    const textDocument = createTextDocument('./package.mo', content);
+    const tree = project.parser.parse(content);
+    assert.ok(tree);
+    const document = new ModelicaDocument(project, library, textDocument, tree);
+
+    assert.deepEqual(document.getLineRange(0), {
+      start: { line: 0, character: 0 },
+      end: { line: 0, character: 9 },
+    });
+    assert.deepEqual(document.getLineRange(1), {
+      start: { line: 1, character: 0 },
+      end: { line: 1, character: 6 },
+    });
+    assert.equal(document.getEOLCharacters(0), '\r\n');
+    assert.equal(document.getEOLCharacters(1), '');
+  });
+
   it('a file with no `within` clause has the correct package path', () => {
     const textDocument = createTextDocument('./package.mo', TEST_PACKAGE_CONTENT);
     const tree = project.parser.parse(TEST_PACKAGE_CONTENT);

@@ -156,6 +156,14 @@ export class ModelicaDocument implements TextDocument {
     return this.#document.offsetAt(position);
   }
 
+  public getLineRange(line: number): LSP.Range {
+    return this.#document.getLineRange(line);
+  }
+
+  public getEOLCharacters(line: number): string {
+    return this.#document.getEOLCharacters(line);
+  }
+
   public get uri(): LSP.DocumentUri {
     return this.#document.uri;
   }
