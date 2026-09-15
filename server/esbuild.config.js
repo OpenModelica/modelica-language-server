@@ -17,6 +17,8 @@ const buildOptions = {
   format: 'cjs',
   tsconfig: './tsconfig.json',
   alias: { 'web-tree-sitter': webTreeSitterCjs },
+  // Read by src/version.ts; the standalone binary has no package.json beside it.
+  define: { __MODELICA_LS_VERSION__: JSON.stringify(require('./package.json').version) },
   banner: { js: '#!/usr/bin/env node' },
 };
 
