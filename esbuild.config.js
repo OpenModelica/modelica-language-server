@@ -39,6 +39,10 @@ esbuild.build({
   alias: {
     'web-tree-sitter': webTreeSitterCjs,
   },
+  // Read by server/src/version.ts.
+  define: {
+    __MODELICA_LS_VERSION__: JSON.stringify(require('./server/package.json').version),
+  },
   format: 'cjs',
   tsconfig: './server/tsconfig.json',
 }).catch(() => process.exit(1));

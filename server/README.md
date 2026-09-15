@@ -52,6 +52,19 @@ Other transports supported by the underlying [`vscode-languageserver`][vscode-la
 | `--pipe=<name>`   | Named pipe          |
 | `--node-ipc`      | Node.js IPC channel |
 
+To find out which server you have, print its version, the target triple it runs on and its
+Node.js version:
+
+```console
+$ modelica-language-server --version
+modelica-language-server 0.3.4
+target: x86_64-unknown-linux-gnu
+node: v24.19.0
+```
+
+A running server reports the same information: its name and version in `serverInfo` of the
+`initialize` result, and all of it in the first log message.
+
 ### Example: Zed extension
 
 In your Zed extension's `language_server` configuration, point the binary at the globally installed server:

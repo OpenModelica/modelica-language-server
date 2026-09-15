@@ -48,6 +48,7 @@ import path from 'node:path';
 import { initializeParser } from './parser';
 import Analyzer from './analyzer';
 import { logger, setLoggerOptions } from './util/logger';
+import { hostTriple, serverName, version, versionInfo } from './version';
 
 /**
  * ModelicaServer collection all the important bits and bobs.
@@ -82,6 +83,7 @@ export class ModelicaServer {
       connection,
       logLevel: 'debug',
     });
+    logger.info(`${serverName} ${version} (target: ${hostTriple()}, node: ${process.version})`);
     logger.debug('Initializing...');
 
     const parser = await initializeParser();
@@ -246,7 +248,7 @@ export class ModelicaServer {
       );
     }
 
-    await connection.client.register(
+    await this.#connection.client.register(
       new LSP.ProtocolNotificationType('workspace/didChangeWatchedFiles'),
       {
         watchers: [
@@ -488,17 +490,27 @@ export class ModelicaServer {
   }
 }
 
-// Create a connection for the server, using Node's IPC as a transport.
-// Also include all preview / proposed LSP features.
-const connection = LSP.createConnection(LSP.ProposedFeatures.all);
+if (process.argv.includes('--version')) {
+  // Checked before creating the connection, which throws when no transport
+  // (--stdio, --socket, ...) is given.
+  process.stdout.write(`${versionInfo()}\n`);
+} else {
+  // Create a connection for the server, using the transport given on the
+  // command line. Also include all preview / proposed LSP features.
+  const connection = LSP.createConnection(LSP.ProposedFeatures.all);
 
-connection.onInitialize(async (params: LSP.InitializeParams): Promise<LSP.InitializeResult> => {
-  const server = await ModelicaServer.initialize(connection, params);
-  server.register(connection);
-  return {
-    capabilities: server.capabilities(),
-  };
-});
+  connection.onInitialize(async (params: LSP.InitializeParams): Promise<LSP.InitializeResult> => {
+    const server = await ModelicaServer.initialize(connection, params);
+    server.register(connection);
+    return {
+      capabilities: server.capabilities(),
+      serverInfo: {
+        name: serverName,
+        version,
+      },
+    };
+  });
 
-// Listen on the connection
-connection.listen();
+  // Listen on the connection
+  connection.listen();
+}
