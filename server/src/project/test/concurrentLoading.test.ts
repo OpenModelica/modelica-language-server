@@ -138,6 +138,8 @@ describeOnFifoSupportingPlatforms('concurrent document loading', () => {
       'expected the edit applied before the late load resumed to survive',
     );
     assert.ok(!winnerTreeDeleted, 'the winning document must not be disposed');
+
+    winner.dispose();
   });
 
   it('discards its result if the library is unloaded while the load is in flight', async function () {
@@ -161,5 +163,45 @@ describeOnFifoSupportingPlatforms('concurrent document loading', () => {
 
     assert.equal(result, undefined, 'a load into an unloaded library must not be returned as usable');
     assert.equal(project.libraries.length, 0, 'the unloaded library must not be resurrected');
+  });
+
+  it('does not let a load against a removed instance resurface after the same path is reloaded', async function () {
+    this.timeout(10_000);
+
+    const { dir, fifoPath } = makeScratchLibraryWithFifo('Reloaded.mo');
+    scratchDirs.push(dir);
+    const oldLibrary = await ModelicaLibrary.load(project, dir, false);
+    project.addLibrary(oldLibrary);
+
+    // Start loading the fifo path against the old instance; this suspends
+    // on the blocking read below.
+    const pending = project.addDocument(fifoPath);
+
+    // Unload, then reload the same directory - e.g. the user removed and
+    // re-added the same workspace folder while the file was still opening.
+    // This constructs a brand-new ModelicaLibrary instance at the same path;
+    // the pending load still only holds a reference to the old, removed one.
+    project.removeLibrariesUnder(dir);
+    const newLibrary = await ModelicaLibrary.load(project, dir, false);
+    project.addLibrary(newLibrary);
+
+    // The new instance has its own, unrelated view of the same path.
+    const replacement = makeDocument(project, newLibrary, fifoPath, CLASS_CONTENT_ON_DISK);
+    assert.equal(newLibrary.publishDocument(fifoPath, replacement), replacement);
+
+    // Release the read that was suspended against the *old*, removed instance.
+    await fsPromises.writeFile(fifoPath, CLASS_CONTENT_ON_DISK, 'utf-8');
+    const result = await pending;
+
+    assert.equal(result, undefined, 'the load against the removed instance must not resurface');
+    assert.equal(project.libraries.length, 1);
+    assert.equal(project.libraries[0], newLibrary, 'only the reloaded instance should remain');
+    assert.equal(
+      newLibrary.documents.get(fifoPath),
+      replacement,
+      "the replacement library's own document must be unaffected by the stale load",
+    );
+
+    replacement.dispose();
   });
 });

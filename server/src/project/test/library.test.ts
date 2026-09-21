@@ -46,24 +46,60 @@ const TEST_LIBRARY_PATH = path.join(__dirname, 'TestLibrary 1.0.0');
 describe('ModelicaLibrary.publishDocument', () => {
   let project: ModelicaProject;
   let library: ModelicaLibrary;
+  let tracked: Array<{ document: ModelicaDocument; wasDisposed: () => boolean }>;
 
   beforeEach(async () => {
     const parser = await initializeParser();
     project = new ModelicaProject(parser);
     library = new ModelicaLibrary(project, TEST_LIBRARY_PATH, false);
+    tracked = [];
   });
 
-  function makeDocument(filePath: string, content: string): ModelicaDocument {
+  afterEach(() => {
+    // Free whichever documents the test itself didn't already get disposed
+    // (by production code, via publishDocument), so these tests don't leak
+    // real wasm trees even though a couple of them are expected to.
+    for (const { document, wasDisposed } of tracked) {
+      if (!wasDisposed()) {
+        document.dispose();
+      }
+    }
+  });
+
+  /**
+   * Creates a document and wraps its tree's `delete()` so a test can assert
+   * whether it was called *and* let the real wasm resource actually be
+   * freed - as opposed to replacing `delete()` with only a boolean flag,
+   * which would verify the call was made but suppress the real release.
+   */
+  function makeSpiedDocument(
+    filePath: string,
+    content: string,
+  ): { document: ModelicaDocument; wasDisposed: () => boolean } {
     const uri = pathToUri(filePath);
     const textDocument = TextDocument.create(uri, 'modelica', 0, content);
     const tree = project.parser.parse(content);
     assert.ok(tree);
-    return new ModelicaDocument(project, library, textDocument, tree);
+    const document = new ModelicaDocument(project, library, textDocument, tree);
+
+    let disposed = false;
+    const originalDelete = tree.delete.bind(tree);
+    tree.delete = () => {
+      disposed = true;
+      originalDelete();
+    };
+
+    const entry = { document, wasDisposed: () => disposed };
+    tracked.push(entry);
+    return entry;
   }
 
   it('publishes a document when nothing is cached for its path yet', () => {
     const filePath = path.join(TEST_LIBRARY_PATH, 'HalfAdder.mo');
-    const document = makeDocument(filePath, 'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n');
+    const { document } = makeSpiedDocument(
+      filePath,
+      'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n',
+    );
 
     const published = library.publishDocument(filePath, document);
 
@@ -77,20 +113,16 @@ describe('ModelicaLibrary.publishDocument', () => {
     // the same path independently; the loser of the race must not clobber
     // the winner, and must free the tree it produced instead of leaking it.
     const filePath = path.join(TEST_LIBRARY_PATH, 'HalfAdder.mo');
-    const winner = makeDocument(filePath, 'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n');
-    assert.equal(library.publishDocument(filePath, winner), winner);
+    const winner = makeSpiedDocument(filePath, 'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n');
+    assert.equal(library.publishDocument(filePath, winner.document), winner.document);
 
-    const loser = makeDocument(filePath, 'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n');
-    let loserTreeDeleted = false;
-    loser.tree.delete = () => {
-      loserTreeDeleted = true;
-    };
+    const loser = makeSpiedDocument(filePath, 'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n');
+    const published = library.publishDocument(filePath, loser.document);
 
-    const published = library.publishDocument(filePath, loser);
-
-    assert.equal(published, winner, 'expected the already-cached document to remain canonical');
-    assert.equal(library.documents.get(filePath), winner);
-    assert.ok(loserTreeDeleted, 'expected the redundant parse to be freed');
+    assert.equal(published, winner.document, 'expected the already-cached document to remain canonical');
+    assert.equal(library.documents.get(filePath), winner.document);
+    assert.ok(loser.wasDisposed(), 'expected the redundant parse to be freed');
+    assert.ok(!winner.wasDisposed(), 'the winning document must not be disposed');
   });
 
   it('frees the document and returns undefined once the library has been removed', () => {
@@ -99,18 +131,16 @@ describe('ModelicaLibrary.publishDocument', () => {
     // still being opened) must not resurrect the library with a document
     // nothing will ever dispose.
     const filePath = path.join(TEST_LIBRARY_PATH, 'HalfAdder.mo');
-    const document = makeDocument(filePath, 'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n');
-
-    let treeDeleted = false;
-    document.tree.delete = () => {
-      treeDeleted = true;
-    };
+    const { document, wasDisposed } = makeSpiedDocument(
+      filePath,
+      'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n',
+    );
 
     library.markRemoved();
     const published = library.publishDocument(filePath, document);
 
     assert.equal(published, undefined);
     assert.equal(library.documents.get(filePath), undefined);
-    assert.ok(treeDeleted, 'expected the late-arriving document to be freed');
+    assert.ok(wasDisposed(), 'expected the late-arriving document to be freed');
   });
 });
