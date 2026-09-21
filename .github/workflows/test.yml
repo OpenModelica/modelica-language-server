@@ -47,6 +47,12 @@ jobs:
         run: npm run test:server:coverage
 
       - name: Upload server coverage to Coveralls
+        # Reporting-only step: an outage or a broken download in Coveralls'
+        # own release infrastructure (observed 2026-09-21, run 35618359654 -
+        # coverage-reporter's installer fetched an HTML error page instead of
+        # its checksums file) must not fail the whole build and skip every
+        # step after it, including the e2e tests and release packaging.
+        continue-on-error: true
         uses: coverallsapp/github-action@v2.3.8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
