@@ -69,34 +69,38 @@ export function findFirst(
   callback: (n: SyntaxNode) => boolean,
 ): SyntaxNode | null {
   const cursor = start.walk();
-  let reachedRoot = false;
+  try {
+    let reachedRoot = false;
 
-  while (!reachedRoot) {
-    const node = cursor.currentNode;
-    if (callback(node) === true) {
-      return node;
-    }
-
-    if (cursor.gotoFirstChild()) {
-      continue;
-    }
-
-    if (cursor.gotoNextSibling()) {
-      continue;
-    }
-
-    while (true) {
-      if (!cursor.gotoParent()) {
-        reachedRoot = true;
-        break;
+    while (!reachedRoot) {
+      const node = cursor.currentNode;
+      if (callback(node) === true) {
+        return node;
       }
+
+      if (cursor.gotoFirstChild()) {
+        continue;
+      }
+
       if (cursor.gotoNextSibling()) {
-        break;
+        continue;
+      }
+
+      while (true) {
+        if (!cursor.gotoParent()) {
+          reachedRoot = true;
+          break;
+        }
+        if (cursor.gotoNextSibling()) {
+          break;
+        }
       }
     }
-  }
 
-  return null;
+    return null;
+  } finally {
+    cursor.delete();
+  }
 }
 
 export function range(n: SyntaxNode): LSP.Range {

@@ -140,7 +140,7 @@ describe('ModelicaProject', () => {
       assert.equal(project.libraries[0].name, "TestLibrary");
     });
 
-    it('should add all the documents in the library', async () => {
+    it('should add all the documents in the library, loading them lazily as requested', async () => {
       assert.notEqual(await project.getDocument(TEST_PACKAGE_PATH), undefined);
       assert.notEqual(await project.getDocument(TEST_CLASS_PATH), undefined);
 
@@ -151,7 +151,28 @@ describe('ModelicaProject', () => {
       assert.equal(library.documents.get(TEST_CLASS_PATH), await project.getDocument(TEST_CLASS_PATH));
     });
 
+    it('does not eagerly parse every document in the library at load time', async () => {
+      // Regression test for OpenModelica/OpenModelica#16802: the language
+      // server used to parse and permanently retain a wasm syntax tree for
+      // every `.mo` file in every configured library at startup. For a
+      // library the size of Buildings (thousands of files) that exhausted
+      // the wasm parser's linear memory and crash-looped before the scan
+      // ever finished. Only the root `package.mo` should be loaded eagerly;
+      // everything else is loaded on demand.
+      assert.equal(library.documents.size, 1, 'only the root document should be loaded eagerly');
+      assert.ok(library.documents.has(TEST_PACKAGE_PATH));
+
+      const document = await project.getDocument(TEST_CLASS_PATH);
+      assert.notEqual(document, undefined, 'an unloaded document should still be reachable on demand');
+      assert.equal(library.documents.size, 2, 'requesting a document should load and cache just that one');
+    });
+
     it('repeatedly adding documents has no effect', async () => {
+      // The first call to addDocument for a not-yet-loaded document
+      // legitimately loads it (documents are loaded lazily); only calls
+      // after that are no-ops.
+      assert.ok(await project.addDocument(TEST_CLASS_PATH));
+
       for (let i = 0; i < 5; i++) {
         assert(!(await project.addDocument(TEST_PACKAGE_PATH)));
         assert(!(await project.addDocument(TEST_CLASS_PATH)));
@@ -187,6 +208,40 @@ end TestLibrary;
       // can re-add document without issues
       assert(await project.addDocument(TEST_CLASS_PATH));
       assert.notEqual(await project.getDocument(TEST_CLASS_PATH), undefined);
+    });
+
+    it('removeDocument frees the removed document\'s wasm syntax tree', async () => {
+      const document = await project.getDocument(TEST_CLASS_PATH);
+      assert.ok(document);
+
+      let deleteCalled = false;
+      document.tree.delete = () => {
+        deleteCalled = true;
+      };
+
+      assert(await project.removeDocument(TEST_CLASS_PATH));
+      assert.ok(deleteCalled, 'expected removeDocument to free the tree');
+    });
+
+    it('removeLibrariesUnder frees every loaded document\'s wasm syntax tree', async () => {
+      const rootDocument = await project.getDocument(TEST_PACKAGE_PATH);
+      const classDocument = await project.getDocument(TEST_CLASS_PATH);
+      assert.ok(rootDocument);
+      assert.ok(classDocument);
+
+      let rootDeleteCalled = false;
+      rootDocument.tree.delete = () => {
+        rootDeleteCalled = true;
+      };
+      let classDeleteCalled = false;
+      classDocument.tree.delete = () => {
+        classDeleteCalled = true;
+      };
+
+      const removed = project.removeLibrariesUnder(TEST_LIBRARY_PATH);
+      assert.deepEqual(removed, [TEST_LIBRARY_PATH]);
+      assert.ok(rootDeleteCalled, 'expected the root document\'s tree to be freed');
+      assert.ok(classDeleteCalled, 'expected the class document\'s tree to be freed');
     });
   });
 });

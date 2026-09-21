@@ -81,6 +81,28 @@ In your Zed extension's `language_server` configuration, point the binary at the
 }
 ```
 
+## Library loading and memory management
+
+Modelica libraries (MODELICAPATH entries, `modelica.libraries`, workspace folders) are parsed
+with [`web-tree-sitter`][web-tree-sitter], a wasm build of tree-sitter. This has two consequences
+for how the server manages library state:
+
+- **Library documents are loaded lazily.** `ModelicaLibrary.load()` only parses a library's root
+  `package.mo` eagerly, to register its name and path. Individual `.mo` files are parsed on first
+  reference — when a client opens them, or when symbol resolution walks into them via
+  `ModelicaLibrary.getOrLoadDocument()` — and the parsed document is then cached for reuse. A
+  dependency library such as Buildings has thousands of files; parsing and permanently retaining a
+  syntax tree for every one of them at startup, for every configured library, exhausts the wasm
+  parser's linear memory before the scan finishes. Anything that reads a library's files should go
+  through the lazy path rather than walking the filesystem and parsing eagerly.
+
+- **`Tree#delete()` must be called explicitly.** A `web-tree-sitter` `Tree` is backed by malloc'd
+  wasm linear memory; garbage-collecting the JS wrapper object does not free it. Any code that
+  replaces or drops a `Tree` — reparsing a document (`ModelicaDocument.update()`), removing a
+  document or unloading a library (`ModelicaProject.removeDocument`/`removeLibrariesUnder`),
+  discarding a speculative parse — must call `tree.delete()` (or `ModelicaDocument.dispose()`) on
+  the tree being discarded, or its memory leaks for the life of the process.
+
 ## Building from source
 
 ```bash
@@ -133,4 +155,5 @@ The bundled `tree-sitter-modelica.wasm` grammar is from
 [tree-sitter-modelica]: https://github.com/OpenModelica/tree-sitter-modelica
 [vscode-ext]: https://marketplace.visualstudio.com/items?itemName=OpenModelica.modelica-language-server
 [vscode-languageserver]: https://github.com/microsoft/vscode-languageserver-node
+[web-tree-sitter]: https://github.com/tree-sitter/tree-sitter/tree/master/lib/binding_web
 [workflow-test]: https://github.com/OpenModelica/modelica-language-server/actions/workflows/test.yml

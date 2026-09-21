@@ -33,7 +33,7 @@
  *
  */
 
-import * as fs from 'node:fs/promises';
+import * as fsSync from 'node:fs';
 import * as path from 'node:path';
 
 import { logger } from '../util/logger';
@@ -46,6 +46,12 @@ export class ModelicaLibrary {
   readonly #isWorkspace: boolean;
   #name: string;
   #path: string;
+  // Set once this library is removed from its ModelicaProject (see
+  // ModelicaProject.removeLibrariesUnder). A document load that was already
+  // in flight against this library when it was removed checks this after
+  // its await, via publishDocument, so it doesn't resurrect a detached
+  // library with an undisposed, unreachable document.
+  #removed = false;
 
   public constructor(
     project: ModelicaProject,
@@ -62,7 +68,17 @@ export class ModelicaLibrary {
   }
 
   /**
-   * Loads a library and all of its {@link ModelicaDocument}s.
+   * Loads a library, registering its root but not eagerly parsing every
+   * {@link ModelicaDocument} in it.
+   *
+   * Library documents are loaded lazily, on demand, as they're actually
+   * referenced (see {@link getOrLoadDocument}) rather than all at once here.
+   * A dependency library such as Buildings has thousands of `.mo` files;
+   * parsing and permanently retaining a wasm syntax tree for every one of
+   * them, for every configured MODELICAPATH library, at every startup,
+   * exhausts the parser's wasm linear memory well before the scan finishes
+   * (see OpenModelica/OpenModelica#16802). Files are parsed only when
+   * `textDocument/didOpen` opens them or symbol resolution walks into them.
    *
    * @param project the containing project
    * @param libraryPath the path to the library
@@ -77,19 +93,16 @@ export class ModelicaLibrary {
     logger.info(`Loading ${isWorkspace ? 'workspace' : 'library'} at '${libraryPath}'...`);
 
     const library = new ModelicaLibrary(project, libraryPath, isWorkspace);
-    const workspaceRootDocument = await ModelicaDocument.load(
-      project,
-      library,
-      path.join(libraryPath, 'package.mo'),
-    );
+    const rootDocumentPath = path.join(libraryPath, 'package.mo');
+    const rootDocument = await ModelicaDocument.load(project, library, rootDocumentPath);
 
     // Find the root path of the library and update library.#path.
     // It might have been set incorrectly if we opened a child folder.
-    for (let i = 0; i < workspaceRootDocument.within.length; i++) {
+    for (let i = 0; i < rootDocument.within.length; i++) {
       library.#path = path.dirname(library.#path);
     }
 
-    if (workspaceRootDocument.within.length > 0) {
+    if (rootDocument.within.length > 0) {
       // The name came from the child folder we were pointed at, so it named the
       // subpackage rather than the library: loading 'Modelica 4.1.0/Blocks'
       // produced a library called 'Blocks' rooted at 'Modelica 4.1.0', and
@@ -100,19 +113,89 @@ export class ModelicaLibrary {
 
     logger.debug(`Set library path to ${library.path}`);
 
-    const allFiles = await fs.readdir(library.#path, { recursive: true, withFileTypes: true });
-    const entries = allFiles.filter(
-      (entry) => entry.name.endsWith('.mo') && entry.isFile(),
-    );
+    // Cache the document we already parsed under its real path, whether or
+    // not it turned out to be the library's true root: it's a real,
+    // already-loaded document either way, and re-parsing it later (or
+    // discarding this parse without freeing it) would waste the work.
+    library.#documents.set(rootDocumentPath, rootDocument);
 
-    for (const entry of entries) {
-      const filePath = path.join(entry.parentPath, entry.name);
-      const document = await ModelicaDocument.load(project, library, filePath);
-      library.#documents.set(filePath, document);
+    return library;
+  }
+
+  /**
+   * Returns the document at `filePath`, loading and parsing it from disk
+   * (and caching the result) if it isn't already loaded.
+   *
+   * @param filePath absolute path to a document that belongs to this library
+   * @returns the document, or `undefined` if `filePath` does not exist
+   */
+  public getOrLoadDocument(filePath: string): ModelicaDocument | undefined {
+    const cached = this.#documents.get(filePath);
+    if (cached) {
+      return cached;
     }
 
-    logger.debug(`Loaded ${library.#documents.size} documents`);
-    return library;
+    if (!fsSync.existsSync(filePath)) {
+      return undefined;
+    }
+
+    const document = ModelicaDocument.loadSync(this.#project, this, filePath);
+    return this.publishDocument(filePath, document);
+  }
+
+  /**
+   * Publishes an already-loaded `document` for `filePath` into this
+   * library's cache, coordinating with concurrent loads of the same path and
+   * with this library having been removed from its project while the load
+   * that produced `document` was in flight.
+   *
+   * Every document loaded lazily (whether synchronously via
+   * {@link getOrLoadDocument} or asynchronously via `ModelicaDocument.load`,
+   * e.g. from `ModelicaProject.addDocument`) must be published through this
+   * method rather than written directly into `documents`. A caller that
+   * awaits before publishing (an async load) can no longer assume its own
+   * parse is the one that should win: another load for the same path — sync
+   * or async — may have already published while it was suspended, possibly
+   * with edits already applied on top of it. This always keeps exactly one
+   * canonical document per path and frees any redundant parse.
+   *
+   * @param filePath the absolute path `document` was loaded from
+   * @param document a freshly-loaded document for `filePath`, not yet cached
+   * @returns the canonical cached document for `filePath` — `document`
+   *     itself if it won the race to publish, or a different, already-cached
+   *     document if it lost (in which case `document` has been disposed).
+   *     `undefined` if this library was removed before `document` could be
+   *     published (also disposed in that case): the caller has nothing left
+   *     to attach the document to.
+   */
+  public publishDocument(
+    filePath: string,
+    document: ModelicaDocument,
+  ): ModelicaDocument | undefined {
+    if (this.#removed) {
+      document.dispose();
+      return undefined;
+    }
+
+    const existing = this.#documents.get(filePath);
+    if (existing) {
+      document.dispose();
+      return existing;
+    }
+
+    this.#documents.set(filePath, document);
+    return document;
+  }
+
+  /**
+   * Marks this library as removed from its project. Called by
+   * {@link ModelicaProject.removeLibrariesUnder} so that a document load
+   * already in flight against this library discovers, via
+   * {@link publishDocument}, that it must discard its result instead of
+   * resurrecting a library nothing can reach anymore.
+   */
+  public markRemoved(): void {
+    this.#removed = true;
   }
 
   public get name(): string {

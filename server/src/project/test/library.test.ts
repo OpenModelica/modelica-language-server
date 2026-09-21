@@ -1,0 +1,146 @@
+/*
+ * This file is part of OpenModelica.
+ *
+ * Copyright (c) 1998-2026, Open Source Modelica Consortium (OSMC),
+ * c/o Linköpings universitet, Department of Computer and Information Science,
+ * SE-58183 Linköping, Sweden.
+ *
+ * All rights reserved.
+ *
+ * THIS PROGRAM IS PROVIDED UNDER THE TERMS OF AGPL VERSION 3 LICENSE OR
+ * THIS OSMC PUBLIC LICENSE (OSMC-PL) VERSION 1.8.
+ * ANY USE, REPRODUCTION OR DISTRIBUTION OF THIS PROGRAM CONSTITUTES
+ * RECIPIENT'S ACCEPTANCE OF THE OSMC PUBLIC LICENSE OR THE GNU AGPL
+ * VERSION 3, ACCORDING TO RECIPIENTS CHOICE.
+ *
+ * The OpenModelica software and the OSMC (Open Source Modelica Consortium)
+ * Public License (OSMC-PL) are obtained from OSMC, either from the above
+ * address, from the URLs:
+ * http://www.openmodelica.org or
+ * https://github.com/OpenModelica/ or
+ * http://www.ida.liu.se/projects/OpenModelica,
+ * and in the OpenModelica distribution.
+ *
+ * GNU AGPL version 3 is obtained from:
+ * https://www.gnu.org/licenses/licenses.html#GPL
+ *
+ * This program is distributed WITHOUT ANY WARRANTY; without
+ * even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE, EXCEPT AS EXPRESSLY SET FORTH
+ * IN THE BY RECIPIENT SELECTED SUBSIDIARY LICENSE CONDITIONS OF OSMC-PL.
+ *
+ * See the full OSMC Public License conditions for more details.
+ *
+ */
+
+import assert from 'node:assert/strict';
+import path from 'node:path';
+
+import { ModelicaProject, ModelicaLibrary, ModelicaDocument } from '..';
+import { initializeParser } from '../../parser';
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import { pathToUri } from '../../util';
+
+const TEST_LIBRARY_PATH = path.join(__dirname, 'TestLibrary 1.0.0');
+
+describe('ModelicaLibrary.publishDocument', () => {
+  let project: ModelicaProject;
+  let library: ModelicaLibrary;
+  let tracked: Array<{ document: ModelicaDocument; wasDisposed: () => boolean }>;
+
+  beforeEach(async () => {
+    const parser = await initializeParser();
+    project = new ModelicaProject(parser);
+    library = new ModelicaLibrary(project, TEST_LIBRARY_PATH, false);
+    tracked = [];
+  });
+
+  afterEach(() => {
+    // Free whichever documents the test itself didn't already get disposed
+    // (by production code, via publishDocument), so these tests don't leak
+    // real wasm trees even though a couple of them are expected to.
+    for (const { document, wasDisposed } of tracked) {
+      if (!wasDisposed()) {
+        document.dispose();
+      }
+    }
+  });
+
+  /**
+   * Creates a document and wraps its tree's `delete()` so a test can assert
+   * whether it was called *and* let the real wasm resource actually be
+   * freed - as opposed to replacing `delete()` with only a boolean flag,
+   * which would verify the call was made but suppress the real release.
+   */
+  function makeSpiedDocument(
+    filePath: string,
+    content: string,
+  ): { document: ModelicaDocument; wasDisposed: () => boolean } {
+    const uri = pathToUri(filePath);
+    const textDocument = TextDocument.create(uri, 'modelica', 0, content);
+    const tree = project.parser.parse(content);
+    assert.ok(tree);
+    const document = new ModelicaDocument(project, library, textDocument, tree);
+
+    let disposed = false;
+    const originalDelete = tree.delete.bind(tree);
+    tree.delete = () => {
+      disposed = true;
+      originalDelete();
+    };
+
+    const entry = { document, wasDisposed: () => disposed };
+    tracked.push(entry);
+    return entry;
+  }
+
+  it('publishes a document when nothing is cached for its path yet', () => {
+    const filePath = path.join(TEST_LIBRARY_PATH, 'HalfAdder.mo');
+    const { document } = makeSpiedDocument(
+      filePath,
+      'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n',
+    );
+
+    const published = library.publishDocument(filePath, document);
+
+    assert.equal(published, document);
+    assert.equal(library.documents.get(filePath), document);
+  });
+
+  it('keeps the already-cached document and frees a redundant parse', () => {
+    // Regression test: a synchronous getOrLoadDocument (symbol resolution)
+    // and an asynchronous addDocument (opening/creating a file) both load
+    // the same path independently; the loser of the race must not clobber
+    // the winner, and must free the tree it produced instead of leaking it.
+    const filePath = path.join(TEST_LIBRARY_PATH, 'HalfAdder.mo');
+    const winner = makeSpiedDocument(filePath, 'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n');
+    assert.equal(library.publishDocument(filePath, winner.document), winner.document);
+
+    const loser = makeSpiedDocument(filePath, 'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n');
+    const published = library.publishDocument(filePath, loser.document);
+
+    assert.equal(published, winner.document, 'expected the already-cached document to remain canonical');
+    assert.equal(library.documents.get(filePath), winner.document);
+    assert.ok(loser.wasDisposed(), 'expected the redundant parse to be freed');
+    assert.ok(!winner.wasDisposed(), 'the winning document must not be disposed');
+  });
+
+  it('frees the document and returns undefined once the library has been removed', () => {
+    // Regression test: a document load in flight when its library is
+    // unloaded (e.g. a workspace folder removed while a file inside it is
+    // still being opened) must not resurrect the library with a document
+    // nothing will ever dispose.
+    const filePath = path.join(TEST_LIBRARY_PATH, 'HalfAdder.mo');
+    const { document, wasDisposed } = makeSpiedDocument(
+      filePath,
+      'within TestLibrary;\nmodel HalfAdder\nend HalfAdder;\n',
+    );
+
+    library.markRemoved();
+    const published = library.publishDocument(filePath, document);
+
+    assert.equal(published, undefined);
+    assert.equal(library.documents.get(filePath), undefined);
+    assert.ok(wasDisposed(), 'expected the late-arriving document to be freed');
+  });
+});

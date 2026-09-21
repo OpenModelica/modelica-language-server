@@ -37,6 +37,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import * as LSP from 'vscode-languageserver/node';
 import { Tree, Edit } from 'web-tree-sitter';
 import * as fs from 'node:fs/promises';
+import * as fsSync from 'node:fs';
 import * as TreeSitterUtil from '../util/tree-sitter';
 
 import { logger } from '../util/logger';
@@ -80,22 +81,70 @@ export class ModelicaDocument implements TextDocument {
 
     try {
       const content = await fs.readFile(documentPath, 'utf-8');
-
-      const uri = pathToUri(documentPath);
-      const document = TextDocument.create(uri, 'modelica', 0, content);
-
-      const tree = project.parser.parse(content);
-      if (!tree) {
-        throw new Error('parser returned no tree');
-      }
-
-      return new ModelicaDocument(project, library, document, tree);
+      return ModelicaDocument.fromContent(project, library, documentPath, content);
     } catch (err) {
       throw new Error(
         `Failed to load document at '${documentPath}': ${err instanceof Error ? err.message : err}`,
         { cause: err },
       );
     }
+  }
+
+  /**
+   * Loads a document, synchronously.
+   *
+   * Used where a document must be loaded from within otherwise-synchronous
+   * code, e.g. lazily resolving a symbol reference to the library file that
+   * declares it (see {@link ModelicaLibrary.getOrLoadDocument}). Prefer
+   * {@link load} wherever the caller can be `async`.
+   *
+   * @param project the {@link ModelicaProject}
+   * @param library the containing {@link ModelicaLibrary} (or `null` if not a part of one)
+   * @param documentPath the path to the document
+   * @returns the document
+   */
+  public static loadSync(
+    project: ModelicaProject,
+    library: ModelicaLibrary | null,
+    documentPath: string,
+  ): ModelicaDocument {
+    logger.debug(`Loading document at '${documentPath}' (sync)...`);
+
+    try {
+      const content = fsSync.readFileSync(documentPath, 'utf-8');
+      return ModelicaDocument.fromContent(project, library, documentPath, content);
+    } catch (err) {
+      throw new Error(
+        `Failed to load document at '${documentPath}': ${err instanceof Error ? err.message : err}`,
+        { cause: err },
+      );
+    }
+  }
+
+  private static fromContent(
+    project: ModelicaProject,
+    library: ModelicaLibrary | null,
+    documentPath: string,
+    content: string,
+  ): ModelicaDocument {
+    const uri = pathToUri(documentPath);
+    const document = TextDocument.create(uri, 'modelica', 0, content);
+
+    const tree = project.parser.parse(content);
+    if (!tree) {
+      throw new Error('parser returned no tree');
+    }
+
+    return new ModelicaDocument(project, library, document, tree);
+  }
+
+  /**
+   * Frees the wasm syntax tree backing this document. The document must not
+   * be used after calling this; garbage-collecting the JS wrapper alone does
+   * not free the underlying wasm linear memory.
+   */
+  public dispose(): void {
+    this.#tree.delete();
   }
 
   /**
@@ -111,6 +160,7 @@ export class ModelicaDocument implements TextDocument {
       if (!tree) {
         throw new Error(`Failed to parse updated document '${this.uri}'`);
       }
+      this.#tree.delete();
       this.#tree = tree;
       return;
     }
@@ -141,6 +191,7 @@ export class ModelicaDocument implements TextDocument {
     if (!tree) {
       throw new Error(`Failed to parse updated document '${this.uri}'`);
     }
+    this.#tree.delete();
     this.#tree = tree;
   }
 
