@@ -97,6 +97,10 @@ export class ModelicaProject {
         for (const document of this.#libraries[i].documents.values()) {
           document.dispose();
         }
+        // A document load already in flight against this library (awaiting
+        // its disk read) must not resurrect it after this point; see
+        // ModelicaLibrary.publishDocument.
+        this.#libraries[i].markRemoved();
         this.#libraries.splice(i, 1);
       }
     }
@@ -167,9 +171,22 @@ export class ModelicaProject {
       }
 
       const document = await ModelicaDocument.load(this, library, documentPath);
-      library.documents.set(documentPath, document);
+      // Another load for the same path (a concurrent addDocument, or a
+      // synchronous ModelicaLibrary.getOrLoadDocument from symbol
+      // resolution) may have already published while this one was awaiting
+      // its disk read, possibly with edits already applied on top of it; or
+      // the library may have been unloaded in the meantime. publishDocument
+      // resolves both: it keeps a single canonical document per path and
+      // frees this parse if it lost the race.
+      const published = library.publishDocument(documentPath, document);
+      if (published === undefined) {
+        logger.debug(
+          `Library '${library.name}' was unloaded while loading '${documentPath}'; discarding.`,
+        );
+        return undefined;
+      }
       logger.debug(`Added document: ${documentPath}`);
-      return document;
+      return published;
     }
 
     // If the document doesn't belong to a library, it could still be loaded

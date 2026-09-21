@@ -46,6 +46,12 @@ export class ModelicaLibrary {
   readonly #isWorkspace: boolean;
   #name: string;
   #path: string;
+  // Set once this library is removed from its ModelicaProject (see
+  // ModelicaProject.removeLibrariesUnder). A document load that was already
+  // in flight against this library when it was removed checks this after
+  // its await, via publishDocument, so it doesn't resurrect a detached
+  // library with an undisposed, unreachable document.
+  #removed = false;
 
   public constructor(
     project: ModelicaProject,
@@ -134,8 +140,62 @@ export class ModelicaLibrary {
     }
 
     const document = ModelicaDocument.loadSync(this.#project, this, filePath);
+    return this.publishDocument(filePath, document);
+  }
+
+  /**
+   * Publishes an already-loaded `document` for `filePath` into this
+   * library's cache, coordinating with concurrent loads of the same path and
+   * with this library having been removed from its project while the load
+   * that produced `document` was in flight.
+   *
+   * Every document loaded lazily (whether synchronously via
+   * {@link getOrLoadDocument} or asynchronously via `ModelicaDocument.load`,
+   * e.g. from `ModelicaProject.addDocument`) must be published through this
+   * method rather than written directly into `documents`. A caller that
+   * awaits before publishing (an async load) can no longer assume its own
+   * parse is the one that should win: another load for the same path — sync
+   * or async — may have already published while it was suspended, possibly
+   * with edits already applied on top of it. This always keeps exactly one
+   * canonical document per path and frees any redundant parse.
+   *
+   * @param filePath the absolute path `document` was loaded from
+   * @param document a freshly-loaded document for `filePath`, not yet cached
+   * @returns the canonical cached document for `filePath` — `document`
+   *     itself if it won the race to publish, or a different, already-cached
+   *     document if it lost (in which case `document` has been disposed).
+   *     `undefined` if this library was removed before `document` could be
+   *     published (also disposed in that case): the caller has nothing left
+   *     to attach the document to.
+   */
+  public publishDocument(
+    filePath: string,
+    document: ModelicaDocument,
+  ): ModelicaDocument | undefined {
+    if (this.#removed) {
+      document.dispose();
+      return undefined;
+    }
+
+    const existing = this.#documents.get(filePath);
+    if (existing) {
+      document.dispose();
+      return existing;
+    }
+
     this.#documents.set(filePath, document);
     return document;
+  }
+
+  /**
+   * Marks this library as removed from its project. Called by
+   * {@link ModelicaProject.removeLibrariesUnder} so that a document load
+   * already in flight against this library discovers, via
+   * {@link publishDocument}, that it must discard its result instead of
+   * resurrecting a library nothing can reach anymore.
+   */
+  public markRemoved(): void {
+    this.#removed = true;
   }
 
   public get name(): string {
