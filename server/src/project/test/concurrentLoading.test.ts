@@ -96,6 +96,12 @@ describeOnFifoSupportingPlatforms('concurrent document loading', () => {
 
   afterEach(() => {
     for (const dir of scratchDirs) {
+      // Unload whichever library is still registered at this scratch root
+      // (some tests already unload it themselves mid-test, in which case
+      // this is a harmless no-op) so its cached documents - including
+      // package.mo, which every test here loads via ModelicaLibrary.load
+      // but none dispose - are freed rather than leaked.
+      project.removeLibrariesUnder(dir);
       fsSync.rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -138,8 +144,7 @@ describeOnFifoSupportingPlatforms('concurrent document loading', () => {
       'expected the edit applied before the late load resumed to survive',
     );
     assert.ok(!winnerTreeDeleted, 'the winning document must not be disposed');
-
-    winner.dispose();
+    // winner is freed in afterEach, via project.removeLibrariesUnder(dir).
   });
 
   it('discards its result if the library is unloaded while the load is in flight', async function () {
@@ -201,7 +206,6 @@ describeOnFifoSupportingPlatforms('concurrent document loading', () => {
       replacement,
       "the replacement library's own document must be unaffected by the stale load",
     );
-
-    replacement.dispose();
+    // replacement is freed in afterEach, via project.removeLibrariesUnder(dir).
   });
 });
