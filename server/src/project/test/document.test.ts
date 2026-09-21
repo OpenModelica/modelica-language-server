@@ -141,4 +141,60 @@ describe('ModelicaDocument', () => {
 
     assert.deepEqual(document.within, ['TestPackage', 'Foo', 'Bar']);
   });
+
+  it('dispose() frees the underlying wasm syntax tree', () => {
+    const textDocument = createTextDocument('.', TEST_PACKAGE_CONTENT);
+    const tree = project.parser.parse(TEST_PACKAGE_CONTENT);
+    assert.ok(tree);
+    const document = new ModelicaDocument(project, library, textDocument, tree);
+
+    let deleteCalled = false;
+    tree.delete = () => {
+      deleteCalled = true;
+    };
+
+    document.dispose();
+    assert.ok(deleteCalled, 'expected dispose() to free the wasm tree');
+  });
+
+  it('update() frees the tree it replaces, whole-document replacement', () => {
+    // Regression test for OpenModelica/OpenModelica#16802: `web-tree-sitter`
+    // trees are backed by wasm linear memory that JS garbage collection does
+    // not reclaim; a discarded tree must be freed with `tree.delete()` or its
+    // memory leaks for the lifetime of the process.
+    const textDocument = createTextDocument('.', TEST_PACKAGE_CONTENT);
+    const tree = project.parser.parse(TEST_PACKAGE_CONTENT);
+    assert.ok(tree);
+    const document = new ModelicaDocument(project, library, textDocument, tree);
+
+    let deleteCalled = false;
+    tree.delete = () => {
+      deleteCalled = true;
+    };
+
+    document.update(UPDATED_TEST_PACKAGE_CONTENT);
+    assert.ok(deleteCalled, 'expected the replaced tree to be freed');
+    assert.notEqual(document.tree, tree, 'expected a new tree to replace the old one');
+  });
+
+  it('update() frees the tree it replaces, incremental edit', () => {
+    const textDocument = createTextDocument('.', TEST_PACKAGE_CONTENT);
+    const tree = project.parser.parse(TEST_PACKAGE_CONTENT);
+    assert.ok(tree);
+    const document = new ModelicaDocument(project, library, textDocument, tree);
+
+    let deleteCalled = false;
+    const originalDelete = tree.delete.bind(tree);
+    tree.delete = () => {
+      deleteCalled = true;
+      originalDelete();
+    };
+
+    document.update('1.0.1', {
+      start: { line: 1, character: 22 },
+      end: { line: 1, character: 27 },
+    });
+
+    assert.ok(deleteCalled, 'expected the edited tree to be freed after the incremental reparse');
+  });
 });

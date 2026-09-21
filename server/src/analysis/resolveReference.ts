@@ -589,7 +589,7 @@ function getPackageClassFromFilePath(
   filePath: string,
   symbol: string,
 ): [ModelicaDocument | undefined, SyntaxNode | undefined] {
-  const document = library.documents.get(filePath);
+  const document = library.getOrLoadDocument(filePath);
   if (!document) {
     logger.debug(`getPackageClassFromFilePath: Couldn't find document ${filePath}`);
     return [undefined, undefined];

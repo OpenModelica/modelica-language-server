@@ -94,6 +94,9 @@ export class ModelicaProject {
         (relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative));
       if (isAtOrBelow && shouldRemove(this.#libraries[i])) {
         removed.push(libraryPath);
+        for (const document of this.#libraries[i].documents.values()) {
+          document.dispose();
+        }
         this.#libraries.splice(i, 1);
       }
     }
@@ -189,6 +192,11 @@ export class ModelicaProject {
       return document;
     }
 
+    // The document declares a `within`, so it doesn't belong to `standaloneLibrary`
+    // after all; that guess was wrong, and its tree must be freed before we
+    // discard the guess and look for the real, enclosing library instead.
+    document.dispose();
+
     // The document declares a `within`, so it belongs to a library that has not
     // been loaded. Load that library from disk rather than giving up: a client
     // that never announced the library (or announced it only after the document
@@ -235,7 +243,9 @@ export class ModelicaProject {
 
     this.addLibrary(library);
 
-    const document = library.documents.get(documentPath);
+    // Library documents are loaded lazily; `documentPath` itself may not be
+    // the library's root and so may not be cached yet.
+    const document = library.getOrLoadDocument(documentPath);
     if (document === undefined) {
       logger.debug(`Library '${library.name}' does not contain '${documentPath}'.`);
       return undefined;
@@ -283,6 +293,7 @@ export class ModelicaProject {
     const doc = await this.getDocument(documentPath, { load: false });
     if (doc) {
       doc.library?.documents.delete(documentPath);
+      doc.dispose();
       return true;
     } else {
       logger.warn(`Failed to remove document '${documentPath}': not found`);
