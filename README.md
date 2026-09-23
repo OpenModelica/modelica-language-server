@@ -40,6 +40,19 @@ features:
   Modelica grammar are left untouched. Other LSP clients can supply `printWidth`
   as an additional formatting option.
 
+  ![VS Code demonstration: open the Command Palette, choose Format Document, and see two-space Modelica indentation](images/formatting_demo.gif)
+
+  To try it in VS Code:
+
+  1. If the window is in Restricted Mode, open **Manage Workspace Trust** and
+     trust the folder if you trust its contents.
+  2. Open a `.mo` file and check that its language mode is **Modelica**.
+  3. Press **F1**, type **Format Document**, and press **Enter**. If prompted,
+     choose **Modelica Language Server** as the formatter.
+  4. To format only part of a file, select the lines and run **Format Selection**.
+
+  [View or download the formatting GIF](images/formatting_demo.gif).
+
 ## Configuration
 
 ### Loading external Modelica libraries
