@@ -48,7 +48,7 @@ import path from 'node:path';
 import { initializeParser } from './parser';
 import { Parser } from 'web-tree-sitter';
 import { formatDocument } from './formatting';
-import { syntaxDiagnostics } from './util/diagnostics';
+import { syntaxDiagnosticReport } from './util/diagnostics';
 import { DiagnosticQueue } from './util/diagnosticQueue';
 import Analyzer from './analyzer';
 import { logger, setLoggerOptions } from './util/logger';
@@ -265,12 +265,10 @@ export class ModelicaServer {
     if (!current || current.languageId !== 'modelica') return;
     // Parsing and collecting are synchronous, so no older result can finish
     // after a newer edit or close. Always read the latest managed document.
-    try {
-      const diagnostics = syntaxDiagnostics(this.#parser, current);
-      void this.#connection.sendDiagnostics({ uri, version: current.version, diagnostics });
-    } catch (err) {
+    const report = syntaxDiagnosticReport(this.#parser, current, err => {
       logger.warn(`Could not check '${uri}': ${err instanceof Error ? err.message : err}`);
-    }
+    });
+    void this.#connection.sendDiagnostics(report);
   }
 
   private setSyntaxDiagnostics(enabled: boolean): void {

@@ -41,7 +41,7 @@ import { Parser } from 'web-tree-sitter';
 import { DiagnosticSeverity } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { initializeParser } from '../../parser';
-import { syntaxDiagnostics } from '../diagnostics';
+import { syntaxDiagnosticReport, syntaxDiagnostics } from '../diagnostics';
 
 describe('Modelica syntax diagnostics', () => {
   let parser: Parser;
@@ -163,4 +163,36 @@ describe('Modelica syntax diagnostics', () => {
       parser.parse = originalParse;
     }
   });
+
+  for (const failure of ['throw', 'null', 'traversal']) {
+    it(`clears old diagnostics at the current version after ${failure} failure and recovers`, () => {
+      const uri = 'untitled:failure.mo';
+      const failures: unknown[] = [];
+      const report = (version: number, text: string) => syntaxDiagnosticReport(
+        parser, TextDocument.create(uri, 'modelica', version, text), error => failures.push(error),
+      );
+      assert.ok(report(1, 'model M').diagnostics.length);
+      const originalParse = parser.parse.bind(parser);
+      let deleted = false;
+      parser.parse = (() => {
+        if (failure === 'throw') throw new Error('injected parse failure');
+        if (failure === 'null') return null;
+        const tree = originalParse('model M');
+        assert.ok(tree);
+        const originalDelete = tree.delete.bind(tree);
+        tree.delete = () => { deleted = true; originalDelete(); };
+        Object.defineProperty(tree, 'rootNode', { get: () => { throw new Error('injected traversal failure'); } });
+        return tree;
+      }) as Parser['parse'];
+      try {
+        assert.deepEqual(report(2, 'model M end M;'), { uri, version: 2, diagnostics: [] });
+        assert.equal(failures.length, 1, 'failure must still be logged, not treated as a successful validation');
+        if (failure === 'traversal') assert.ok(deleted, 'failed collection must release the temporary tree');
+      } finally {
+        parser.parse = originalParse;
+      }
+      assert.equal(report(3, 'model M').diagnostics[0].code, 'syntax-error');
+      assert.deepEqual(report(4, 'model M end M;').diagnostics, []);
+    });
+  }
 });

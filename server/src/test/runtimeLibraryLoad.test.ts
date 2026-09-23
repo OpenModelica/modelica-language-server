@@ -259,6 +259,45 @@ async function initializeWithLibB(client: LspTestClient): Promise<void> {
 }
 
 describe('syntax diagnostics over LSP', () => {
+  it('drains many substantial tabs and a large document while serving requests and cancelling closed tabs', async function () {
+    this.timeout(30_000);
+    const client = new LspTestClient();
+    const uris = Array.from({ length: 41 }, (_, i) => `untitled:Stress${i}.mo`);
+    const source = (count: number) => 'model M\n' + Array.from(
+      { length: count }, (_, i) => `  Real value${i}(start = ${i});\n`,
+    ).join('') + 'end M;\n';
+    const ordinary = source(1000);
+    const large = source(50_000);
+    assert.ok(large.length > 1_000_000);
+    try {
+      await client.request('initialize', { processId: process.pid, rootUri: null, capabilities: {} });
+      client.notify('initialized', {});
+      for (const [i, uri] of uris.entries()) {
+        client.notify('textDocument/didOpen', {
+          textDocument: { uri, languageId: 'modelica', version: 1, text: i === 10 ? large : ordinary },
+        });
+      }
+      client.notify('workspace/didChangeConfiguration', { settings: { modelica: { diagnostics: { syntax: true } } } });
+      for (const uri of uris.slice(31)) client.notify('textDocument/didClose', { textDocument: { uri } });
+      assert.deepEqual((await client.waitForDiagnostics(uris[0], 1)).diagnostics, []);
+      const response = await client.request('textDocument/formatting', {
+        textDocument: { uri: 'untitled:NotOpen.mo' }, options: { tabSize: 2, insertSpaces: true },
+      });
+      assert.deepEqual(response.result, [], 'server must continue handling requests between checks');
+      assert.ok(client.diagnostics.filter(report => report.version === 1).length < 31,
+        'request should be served before draining every queued document');
+      for (const uri of uris.slice(0, 31)) {
+        assert.deepEqual((await client.waitForDiagnostics(uri, 1)).diagnostics, []);
+      }
+      for (const uri of uris.slice(31)) {
+        assert.deepEqual(client.diagnostics.filter(report => report.uri === uri), [{ uri, diagnostics: [] }]);
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
+      assert.equal(client.diagnostics.length, 41, 'one report per open tab plus clears, with no idle rechecks');
+      assert.equal(client.hasExited, false);
+    } finally { await client.dispose(); }
+  });
+
   for (const initial of [undefined, false, true]) {
     it(`supports default-off and live toggles (initial: ${initial})`, async function () {
       this.timeout(15_000);

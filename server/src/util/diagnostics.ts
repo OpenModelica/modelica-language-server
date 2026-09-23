@@ -35,8 +35,23 @@
 
 
 import { Node, Parser } from 'web-tree-sitter';
-import { Diagnostic, DiagnosticSeverity } from 'vscode-languageserver/node';
+import { Diagnostic, DiagnosticSeverity, PublishDiagnosticsParams } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+
+/** Always replace the previous report, including when checking this version fails. */
+export function syntaxDiagnosticReport(
+  parser: Parser,
+  document: TextDocument,
+  onError: (error: unknown) => void,
+): PublishDiagnosticsParams {
+  let diagnostics: Diagnostic[] = [];
+  try {
+    diagnostics = syntaxDiagnostics(parser, document);
+  } catch (error) {
+    onError(error);
+  }
+  return { uri: document.uri, version: document.version, diagnostics };
+}
 
 /** Syntax only: no name resolution, type checking or embedded markup validation. */
 export function syntaxDiagnostics(parser: Parser, document: TextDocument): Diagnostic[] {
