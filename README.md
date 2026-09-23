@@ -34,11 +34,15 @@ features:
   with their class headers, as in the Modelica Standard Library.
 
   Selection formatting covers the selected lines and uses the surrounding code
-  to determine indentation. Strings (including HTML documentation), comments,
+  to determine indentation. Strings (including XML/HTML documentation), comments,
   and declaration order are preserved. Inputs and outputs are not reordered,
   since that can change positional function calls. Files rejected by the bundled
   Modelica grammar are left untouched. Other LSP clients can supply `printWidth`
   as an additional formatting option.
+
+  Embedded XML/HTML is preserved exactly, including whitespace, escaped quotes,
+  and line endings inside strings. Only the surrounding Modelica annotation
+  syntax is formatted; no XML/HTML formatter is invoked, even for malformed markup.
 
   ![VS Code demonstration: open the Command Palette, choose Format Document, and see two-space Modelica indentation](images/formatting_demo.gif)
 

@@ -409,6 +409,68 @@ end M;`;
     assert.equal(format(result), result);
   });
 
+  for (const eol of ['\n', '\r\n']) {
+    const xml = [
+      String.raw`<?xml version=\"1.0\" encoding=\"UTF-8\"?>`,
+      String.raw`<root xml:space=\"preserve\" title=\"a=b, c\">`,
+      '  <text>å😀 &amp; &#945;</text>' + '  ',
+      '\t<!-- preserve indentation and trailing spaces -->  ',
+      '  <![CDATA[ x < y && z > 0; end M;',
+      '     keep   these spaces  ]]>',
+      '</root>',
+    ].join(eol);
+    const source = `model M${eol}Real x=1;${eol}annotation(Documentation(info="${xml}"));${eol}end M;${eol}`;
+    const options = {
+      tabSize: 2, insertSpaces: true, printWidth: 20,
+      trimTrailingWhitespace: true, trimFinalNewlines: true,
+    };
+    const lineEnding = eol === '\n' ? 'LF' : 'CRLF';
+
+    it(`preserves XML documentation exactly during document formatting (${lineEnding})`, () => {
+      const result = format(source, options);
+      assert.notEqual(result, source);
+      assert.ok(result.includes(`info = "${xml}"`), 'XML, escapes and internal whitespace must remain unchanged');
+      assertPreserved(source, result);
+      assert.equal(format(result, options), result);
+    });
+
+    it(`preserves XML documentation when formatting its annotation (${lineEnding})`, () => {
+      const document = TextDocument.create('untitled:xml.mo', 'modelica', 1, source);
+      const range = Range.create(
+        document.positionAt(source.indexOf('annotation')),
+        document.positionAt(source.lastIndexOf('end M;')),
+      );
+      const result = format(source, options, range);
+      assert.notEqual(result, source);
+      assert.ok(result.includes(`info = "${xml}"`));
+      assert.ok(result.startsWith(`model M${eol}Real x=1;${eol}`), 'unselected declaration must remain unchanged');
+      assertPreserved(source, result);
+      assert.equal(format(result, options, range), result);
+    });
+
+    it(`does not format a selection inside XML documentation (${lineEnding})`, () => {
+      const document = TextDocument.create('untitled:xml.mo', 'modelica', 1, source);
+      const range = Range.create(
+        document.positionAt(source.indexOf('<root')),
+        document.positionAt(source.indexOf('</root>')),
+      );
+      assertPreserved(source, source);
+      assert.equal(format(source, options, range), source);
+    });
+  }
+
+  it('formats Modelica around malformed XML/HTML without repairing the markup', () => {
+    const info = String.raw`<root><unclosed attr=\"a=b\"> &unknown;`;
+    const revisions = '<html>\n <p>unclosed revision entry\n</html>';
+    const source = `model M Real x=1; annotation(Documentation(info="${info}",revisions="${revisions}")); end M;`;
+    const result = format(source);
+    assert.notEqual(result, source);
+    assert.ok(result.includes(`info = "${info}"`));
+    assert.ok(result.includes(`revisions = "${revisions}"`));
+    assertPreserved(source, result);
+    assert.equal(format(result), result);
+  });
+
   it('formats a nested branch selection with tabs, CRLF and preceding Unicode', () => {
     const source = 'model M "å😀"\r\nReal x;\r\nalgorithm\r\nwhen initial() then\r\nx:=f(1,2);\r\nend when;\r\nend M;\r\n';
     const options = { tabSize: 4, insertSpaces: false };
