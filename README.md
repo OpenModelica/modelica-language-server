@@ -6,7 +6,7 @@
 A very early version of a Modelica Language Server based on
 [OpenModelica/tree-sitter-modelica][tree-sitter-modelica].
 
-For syntax highlighting install enxtension
+For syntax highlighting install extension
 [AnHeuermann.metamodelica][ext-metamodelica]
 in addition.
 
