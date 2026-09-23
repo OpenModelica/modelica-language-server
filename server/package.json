@@ -32,6 +32,7 @@
     "build:standalone": "npm run build && node scripts/build-standalone.js",
     "test": "mocha --require tsx/cjs src/test/**/*.test.ts src/project/test/**/*.test.ts src/util/test/**/*.test.ts src/analysis/test/**/*.test.ts",
     "test:coverage": "c8 npm test",
+    "test:msl": "tsx src/sanity/msl.ts",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build"
   },

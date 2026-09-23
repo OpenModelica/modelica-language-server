@@ -141,9 +141,14 @@ end F;`;
   it('leaves invalid Modelica untouched', () => {
     const source = 'model M Real x = ; end M;';
     assert.equal(format(source), source);
-    // Quoted identifiers are not yet accepted by the bundled grammar.
+  });
+
+  it('formats valid quoted identifiers supported by the updated grammar', () => {
     const quoted = "model M Real 'x y'=1; end M;";
-    assert.equal(format(quoted), quoted);
+    const expected = "model M\n  Real 'x y' = 1;\nend M;\n";
+    assert.equal(format(quoted), expected);
+    assertPreserved(quoted, expected);
+    assert.equal(format(expected), expected);
   });
 
   it('handles CRLF and UTF-16 offsets', () => {

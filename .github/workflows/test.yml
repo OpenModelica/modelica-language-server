@@ -11,6 +11,37 @@ on:
       - main
 
 jobs:
+  msl-sanity:
+    name: MSL sanity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Checkout MSL 4.1.0
+        uses: actions/checkout@v7
+        with:
+          repository: modelica/ModelicaStandardLibrary
+          ref: 8ae3d35c24e519cb2996cab20f3b13daf2b0c50a # v4.1.0
+          path: .msl-sanity
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Check all MSL sources including example models
+        working-directory: server
+        run: npm run test:msl -- ../.msl-sanity/Modelica
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -151,7 +182,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [build, build-binaries]
+    needs: [build, build-binaries, msl-sanity]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -49,7 +49,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { TextEdit } from 'vscode-languageserver/node';
+import { PublishDiagnosticsParams, TextEdit } from 'vscode-languageserver/node';
 
 // Built by the root esbuild.config.js (`npm run esbuild` at the repo root),
 // which is what CI runs before the test suite. This is NOT the same output
@@ -83,6 +83,17 @@ class LspTestClient {
   #pending = new Map<number, (msg: JsonRpcMessage) => void>();
   #exitCode: number | null | undefined = undefined;
   #logs: string[] = [];
+  readonly diagnostics: PublishDiagnosticsParams[] = [];
+
+  async waitForDiagnostics(uri: string, version?: number): Promise<PublishDiagnosticsParams> {
+    const deadline = Date.now() + 5000;
+    do {
+      const found = this.diagnostics.find(report => report.uri === uri && report.version === version);
+      if (found) return found;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    } while (Date.now() < deadline);
+    throw new Error(`No diagnostics for ${uri} at version ${version}`);
+  }
 
   constructor() {
     assert.ok(
@@ -139,6 +150,10 @@ class LspTestClient {
       this.#buffer = this.#buffer.subarray(bodyStart + length);
 
       const message = JSON.parse(body) as JsonRpcMessage;
+      if (message.method === 'textDocument/publishDiagnostics') {
+        this.diagnostics.push(message.params as PublishDiagnosticsParams);
+        continue;
+      }
       if (message.method === 'window/logMessage') {
         const logParams = message.params as { message?: unknown } | undefined;
         if (typeof logParams?.message === 'string') {
@@ -242,6 +257,221 @@ async function initializeWithLibB(client: LspTestClient): Promise<void> {
   });
   client.notify('initialized', {});
 }
+
+describe('syntax diagnostics over LSP', () => {
+  for (const eol of ['\n', '\r\n']) {
+    it(`matches freshly opened text after an incremental edit sequence (${JSON.stringify(eol)})`, async function () {
+      this.timeout(20_000);
+      const client = new LspTestClient();
+      const uri = 'untitled:Edited.mo';
+      let version = 1;
+      let text = ['model M', '  String s = "🃏🔑🤖🌳é"; Real x = 1;', 'end M;'].join(eol);
+      const open = (target: string, contents: string) => client.notify('textDocument/didOpen', {
+        textDocument: { uri: target, languageId: 'modelica', version: 1, text: contents },
+      });
+      async function compare(hasErrors: boolean) {
+        const fresh = `untitled:Fresh${version}.mo`;
+        open(fresh, text);
+        const edited = await client.waitForDiagnostics(uri, version);
+        const baseline = await client.waitForDiagnostics(fresh, 1);
+        assert.equal(edited.diagnostics.length > 0, hasErrors);
+        assert.deepEqual(edited.diagnostics, baseline.diagnostics, 'incremental and fresh documents must agree');
+        client.notify('textDocument/didClose', { textDocument: { uri: fresh } });
+      }
+      function replace(start: number, length: number, replacement: string) {
+        const document = TextDocument.create(uri, 'modelica', version, text);
+        client.notify('textDocument/didChange', {
+          textDocument: { uri, version: ++version },
+          contentChanges: [{
+            range: { start: document.positionAt(start), end: document.positionAt(start + length) },
+            text: replacement,
+          }],
+        });
+        text = text.slice(0, start) + replacement + text.slice(start + length);
+      }
+      try {
+        await client.request('initialize', {
+          processId: process.pid, rootUri: null, capabilities: {}, initializationOptions: { diagnostics: { syntax: true } },
+        });
+        client.notify('initialized', {});
+        open(uri, text);
+        await compare(false);
+        replace(text.indexOf('= 1') + 2, 1, ''); // Remove the expression after Unicode on the same line.
+        await compare(true);
+        replace(0, 0, '// 🃏🔑🤖🌳é' + eol); // Shift an existing error across lines.
+        await compare(true);
+        replace(text.indexOf('= ;') + 2, 0, '2');
+        await compare(false);
+        const ending = text.indexOf('end M;');
+        replace(ending, 'end M;'.length, '');
+        await compare(true);
+        replace(text.length, 0, 'end M;');
+        await compare(false);
+      } finally { await client.dispose(); }
+    });
+  }
+
+  it('drains many substantial tabs and a large document while serving requests and cancelling closed tabs', async function () {
+    this.timeout(30_000);
+    const client = new LspTestClient();
+    const uris = Array.from({ length: 41 }, (_, i) => `untitled:Stress${i}.mo`);
+    const source = (count: number) => 'model M\n' + Array.from(
+      { length: count }, (_, i) => `  Real value${i}(start = ${i});\n`,
+    ).join('') + 'end M;\n';
+    const ordinary = source(1000);
+    const large = source(50_000);
+    assert.ok(large.length > 1_000_000);
+    try {
+      await client.request('initialize', { processId: process.pid, rootUri: null, capabilities: {} });
+      client.notify('initialized', {});
+      for (const [i, uri] of uris.entries()) {
+        client.notify('textDocument/didOpen', {
+          textDocument: { uri, languageId: 'modelica', version: 1, text: i === 10 ? large : ordinary },
+        });
+      }
+      client.notify('workspace/didChangeConfiguration', { settings: { modelica: { diagnostics: { syntax: true } } } });
+      for (const uri of uris.slice(31)) client.notify('textDocument/didClose', { textDocument: { uri } });
+      assert.deepEqual((await client.waitForDiagnostics(uris[0], 1)).diagnostics, []);
+      const response = await client.request('textDocument/formatting', {
+        textDocument: { uri: 'untitled:NotOpen.mo' }, options: { tabSize: 2, insertSpaces: true },
+      });
+      assert.deepEqual(response.result, [], 'server must continue handling requests between checks');
+      assert.ok(client.diagnostics.filter(report => report.version === 1).length < 31,
+        'request should be served before draining every queued document');
+      for (const uri of uris.slice(0, 31)) {
+        assert.deepEqual((await client.waitForDiagnostics(uri, 1)).diagnostics, []);
+      }
+      for (const uri of uris.slice(31)) {
+        assert.deepEqual(client.diagnostics.filter(report => report.uri === uri), [{ uri, diagnostics: [] }]);
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
+      assert.equal(client.diagnostics.length, 41, 'one report per open tab plus clears, with no idle rechecks');
+      assert.equal(client.hasExited, false);
+    } finally { await client.dispose(); }
+  });
+
+  for (const initial of [undefined, false, true]) {
+    it(`supports default-off and live toggles (initial: ${initial})`, async function () {
+      this.timeout(15_000);
+      const client = new LspTestClient();
+      const uri = 'untitled:Toggle.mo';
+      const configure = (syntax: boolean) => client.notify('workspace/didChangeConfiguration', {
+        settings: { modelica: { diagnostics: { syntax } } },
+      });
+      try {
+        await client.request('initialize', {
+          processId: process.pid, rootUri: null, capabilities: {},
+          initializationOptions: initial === undefined ? {} : { diagnostics: { syntax: initial } },
+        });
+        client.notify('initialized', {});
+        client.notify('textDocument/didOpen', {
+          textDocument: { uri, languageId: 'modelica', version: 1, text: 'model M' },
+        });
+        if (initial === true) {
+          assert.ok((await client.waitForDiagnostics(uri, 1)).diagnostics.length);
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 350));
+          assert.deepEqual(client.diagnostics, [], 'off must not publish diagnostics');
+          configure(true);
+          assert.ok((await client.waitForDiagnostics(uri, 1)).diagnostics.length, 'enable checks already-open files');
+        }
+        client.diagnostics.length = 0;
+        client.notify('textDocument/didChange', {
+          textDocument: { uri, version: 2 }, contentChanges: [{ text: 'model N' }],
+        });
+        configure(false);
+        assert.deepEqual((await client.waitForDiagnostics(uri, 2)).diagnostics, []);
+        client.notify('textDocument/didChange', {
+          textDocument: { uri, version: 3 }, contentChanges: [{ text: 'model P' }],
+        });
+        await new Promise(resolve => setTimeout(resolve, 350));
+        assert.equal(client.diagnostics.length, 1, 'disabled checks must stay cancelled, including after edits');
+        configure(true);
+        assert.ok((await client.waitForDiagnostics(uri, 3)).diagnostics.length);
+      } finally { await client.dispose(); }
+    });
+  }
+
+  it('does not check unopened library files or repeatedly check idle tabs', async function () {
+    this.timeout(15_000);
+    const client = new LspTestClient();
+    try {
+      await initializeWithLibB(client);
+      client.notify('workspace/didChangeConfiguration', { settings: { modelica: { diagnostics: { syntax: true } } } });
+      await new Promise(resolve => setTimeout(resolve, 250));
+      assert.deepEqual(client.diagnostics, [], 'loading a library must not publish diagnostics for its files');
+      const uris = Array.from({ length: 20 }, (_, i) => `untitled:Many${i}.mo`);
+      for (const uri of uris) {
+        client.notify('textDocument/didOpen', {
+          textDocument: { uri, languageId: 'modelica', version: 1, text: 'model M end M;' },
+        });
+      }
+      for (const uri of uris) assert.deepEqual((await client.waitForDiagnostics(uri, 1)).diagnostics, []);
+      await new Promise(resolve => setTimeout(resolve, 250));
+      assert.equal(client.diagnostics.length, uris.length, 'idle open tabs must not trigger more checks');
+    } finally { await client.dispose(); }
+  });
+
+  it('reports open/full/incremental changes and clears on fix and close', async function () {
+    this.timeout(15_000);
+    const client = new LspTestClient();
+    const uri = 'untitled:Syntax.mo';
+    try {
+      await client.request('initialize', {
+        processId: process.pid, rootUri: null, capabilities: {}, initializationOptions: { diagnostics: { syntax: true } },
+      });
+      client.notify('initialized', {});
+      client.notify('textDocument/didOpen', {
+        textDocument: { uri, languageId: 'modelica', version: 1, text: 'model M end M' },
+      });
+      const initial = await client.waitForDiagnostics(uri, 1);
+      assert.equal(initial.diagnostics[0].code, 'missing-token');
+      client.notify('textDocument/didChange', {
+        textDocument: { uri, version: 2 },
+        contentChanges: [{ range: { start: { line: 0, character: 13 }, end: { line: 0, character: 13 } }, text: ';' }],
+      });
+      assert.deepEqual((await client.waitForDiagnostics(uri, 2)).diagnostics, []);
+      client.notify('textDocument/didChange', {
+        textDocument: { uri, version: 3 }, contentChanges: [{ text: 'model M' }],
+      });
+      assert.ok((await client.waitForDiagnostics(uri, 3)).diagnostics.length);
+      client.notify('textDocument/didClose', { textDocument: { uri } });
+      assert.deepEqual((await client.waitForDiagnostics(uri)).diagnostics, []);
+    } finally { await client.dispose(); }
+  });
+
+  it('coalesces rapid changes and never publishes stale work after closing', async function () {
+    this.timeout(15_000);
+    const client = new LspTestClient();
+    const uri = 'untitled:Rapid.mo';
+    try {
+      await client.request('initialize', {
+        processId: process.pid, rootUri: null, capabilities: {}, initializationOptions: { diagnostics: { syntax: true } },
+      });
+      client.notify('initialized', {});
+      client.notify('textDocument/didOpen', {
+        textDocument: { uri, languageId: 'modelica', version: 1, text: 'model M' },
+      });
+      for (let version = 2; version <= 30; version++) {
+        client.notify('textDocument/didChange', {
+          textDocument: { uri, version }, contentChanges: [{ text: version === 30 ? 'model M end M;' : 'model M' }],
+        });
+      }
+      assert.deepEqual((await client.waitForDiagnostics(uri, 30)).diagnostics, []);
+      client.notify('textDocument/didChange', {
+        textDocument: { uri, version: 31 }, contentChanges: [{ text: 'model M' }],
+      });
+      client.notify('textDocument/didClose', { textDocument: { uri } });
+      await client.waitForDiagnostics(uri);
+      await new Promise(resolve => setTimeout(resolve, 350));
+      assert.deepEqual(client.diagnostics.map(report => report.version), [30, undefined]);
+      client.notify('textDocument/didOpen', {
+        textDocument: { uri, languageId: 'modelica', version: 1, text: 'model M end M;' },
+      });
+      assert.deepEqual((await client.waitForDiagnostics(uri, 1)).diagnostics, []);
+    } finally { await client.dispose(); }
+  });
+});
 
 describe('formatting over LSP', () => {
   for (const initiallyEnabled of [undefined, false, true]) {

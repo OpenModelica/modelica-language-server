@@ -77,6 +77,9 @@ export function createClientOptions(): LanguageClientOptions {
       configurationSection: 'modelica',
     },
     initializationOptions: {
+      diagnostics: {
+        syntax: workspace.getConfiguration('modelica').get<boolean>('diagnostics.syntax', false),
+      },
       libraries: workspace.getConfiguration('modelica').get<string[]>('libraries', []),
       formatting: {
         formatDocumentation: workspace.getConfiguration('modelica').get<boolean>('formatting.formatDocumentation', false),
