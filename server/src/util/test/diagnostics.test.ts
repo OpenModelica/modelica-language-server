@@ -79,6 +79,8 @@ describe('Modelica syntax diagnostics', () => {
     'model M UnknownType x; equation x = unresolvedName; end M;',
     'model M annotation(Documentation(info="<html><broken></html>")); end M;',
     'model M String s = "🃏🔑🤖🌳é"; /* å */ end M;',
+    'model M equation end M;',
+    "model M type Logic = enumeration('0', '1'); Logic x = Logic.'1'; end M;",
   ]) {
     it('does not report syntax errors for ' + JSON.stringify(source), () => {
       assert.deepEqual(check(source), []);

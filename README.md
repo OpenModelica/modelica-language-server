@@ -204,6 +204,21 @@ Found a bug or having issues? Open a
   - Check the console output of `Language Server Modelica` to see the parsed
     tree of the opened file.
 
+## MSL sanity
+
+The separate **MSL sanity** CI job checks every `.mo` file in the pinned MSL
+4.1.0 release with the syntax diagnostic collector. This includes example
+models embedded inside larger package files, not just `Examples/` directories.
+Any syntax diagnostic, parser failure or missing library fails the job; there
+is no allowlist. Files are checked sequentially and temporary trees are freed.
+This is a grammar sanity check, not compilation or simulation of the examples.
+
+To run it locally after installing the server dependencies:
+
+```bash
+npm --prefix server run test:msl -- /path/to/ModelicaStandardLibrary/Modelica
+```
+
 ## Build and Install Extension
 
 ```bash
@@ -226,7 +241,7 @@ Some parts of the source code are taken from
 licensed under the MIT license and adapted to the Modelica language server.
 
 [OpenModelica/tree-sitter-modelica][tree-sitter-modelica]
-v0.2.0 is included in this extension and is licensed under the [OSMC-PL
+v0.2.3 is included in this extension and is licensed under the [OSMC-PL
 v1.8](./server/OSMC-License.txt).
 
 ## Acknowledgments
