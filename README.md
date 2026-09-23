@@ -27,6 +27,19 @@ features:
 
   ![Hover](images/hover_demo.png)
 
+- Format Document and Format Selection, using two-space Modelica indentation by
+  default. Editor indentation options override this default. Formatting adjusts
+  whitespace, spaces around operators and after commas, and wraps long argument
+  lists at a target width of 100 columns (a soft limit). Section headings align
+  with their class headers, as in the Modelica Standard Library.
+
+  Selection formatting covers the selected lines and uses the surrounding code
+  to determine indentation. Strings (including HTML documentation), comments,
+  and declaration order are preserved. Inputs and outputs are not reordered,
+  since that can change positional function calls. Files rejected by the bundled
+  Modelica grammar are left untouched. Other LSP clients can supply `printWidth`
+  as an additional formatting option.
+
 ## Configuration
 
 ### Loading external Modelica libraries

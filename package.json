@@ -30,6 +30,13 @@
   ],
   "main": "./out/client",
   "contributes": {
+    "configurationDefaults": {
+      "[modelica]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false
+      }
+    },
     "commands": [
       {
         "command": "modelica.loadLibrary",
