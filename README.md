@@ -37,6 +37,25 @@ features:
 
   ![Goto Declaration](images/goto_declaration_demo.png)
 
+- Optional autocomplete, **off by default**. Enable with
+  `"modelica.completion.enabled": true`; changes take effect without restarting.
+  Other LSP clients can use `initializationOptions.completion.enabled` or
+  `settings.modelica.completion.enabled` in a configuration change.
+  Suggests direct declarations, built-in types, explicit imports, and qualified
+  class/package members, including library files after a dot. Suggestions use
+  unsaved text and replace the current word. Comments and strings are excluded.
+  Only requested library paths are loaded; sibling filenames are listed without
+  parsing their contents. Disabled requests do no completion parsing or loading.
+  VS Code's independent word-based suggestions are controlled by
+  `editor.wordBasedSuggestions`, not this setting.
+  Results are limited to 200, with further requests when the prefix narrows.
+
+  This is basic completion, not compiler-level semantic analysis. Broader scope,
+  inheritance/redeclarations, aliases and instance-member resolution are tracked
+  in [#92](https://github.com/OpenModelica/modelica-language-server/issues/92),
+  snippets in [#93](https://github.com/OpenModelica/modelica-language-server/issues/93),
+  and automatic imports in [#94](https://github.com/OpenModelica/modelica-language-server/issues/94).
+
 - Hover provider for declared symbols.
 
   ![Hover](images/hover_demo.png)

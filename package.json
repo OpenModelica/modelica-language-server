@@ -48,6 +48,11 @@
       "type": "object",
       "title": "Modelica Language Server",
       "properties": {
+        "modelica.completion.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Suggest visible Modelica declarations and qualified class/package members. Off by default. Can be toggled without restarting."
+        },
         "modelica.diagnostics.syntax": {
           "type": "boolean",
           "default": false,

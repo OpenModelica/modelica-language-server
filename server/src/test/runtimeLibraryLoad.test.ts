@@ -258,6 +258,89 @@ async function initializeWithLibB(client: LspTestClient): Promise<void> {
   client.notify('initialized', {});
 }
 
+
+describe('completion over LSP', () => {
+
+  for (const initial of [undefined, false, true, 'true']) {
+    it('supports default-off and live completion toggles (initial: ' + JSON.stringify(initial) + ')', async function () {
+      this.timeout(15000);
+      const client = new LspTestClient();
+      try {
+        await client.request('initialize', {
+          processId: process.pid, rootUri: null, capabilities: {},
+          initializationOptions: { libraries: [LIB_A], completion: { enabled: initial } },
+        });
+        client.notify('initialized', {});
+        const uri = 'untitled:ToggleCompletion.mo';
+        const text = 'model M RuntimeLoadLibA.M. end M;';
+        const document = TextDocument.create(uri, 'modelica', 1, text);
+        client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'modelica', version: 1, text } });
+        const request = () => client.request('textDocument/completion', {
+          textDocument: { uri }, position: document.positionAt(text.indexOf('M.') + 2),
+        });
+        const initialResponse = await request();
+        assert.equal(initialResponse.error, undefined);
+        if (initial !== true) {
+          assert.deepEqual(initialResponse.result, { isIncomplete: false, items: [] });
+          assert.ok(!client.logs.some(log => log.includes(FILE_M)), 'disabled completion must not load referenced files');
+        } else {
+          assert.ok(client.logs.some(log => log.includes(FILE_M)), 'enabled completion should resolve the requested file');
+        }
+        client.notify('workspace/didChangeConfiguration', { settings: { modelica: { completion: { enabled: true } } } });
+        await request();
+        assert.ok(client.logs.some(log => log.includes(FILE_M)));
+        client.notify('workspace/didChangeConfiguration', { settings: { modelica: { completion: { enabled: false } } } });
+        assert.deepEqual((await request()).result, { isIncomplete: false, items: [] });
+        client.notify('workspace/didChangeConfiguration', { settings: { modelica: { completion: { enabled: true } } } });
+        const localText = 'model M Real velocity; equation vel end M;';
+        client.notify('textDocument/didChange', { textDocument: { uri, version: 2 }, contentChanges: [{ text: localText }] });
+        const response = await client.request('textDocument/completion', {
+          textDocument: { uri }, position: { line: 0, character: localText.indexOf('vel end') + 3 },
+        });
+        assert.deepEqual((response.result as { items: { label: string }[] }).items.map(item => item.label), ['velocity']);
+      } finally {
+        await client.dispose();
+      }
+    });
+  }
+  it('advertises completion and uses the latest unsaved text without diagnostics', async function () {
+    this.timeout(15000);
+    const client = new LspTestClient();
+    try {
+      const initialized = await client.request('initialize', {
+        processId: process.pid, rootUri: null, capabilities: {},
+        initializationOptions: { libraries: [LIB_A], completion: { enabled: true } },
+      });
+      const capabilities = (initialized.result as { capabilities: { completionProvider: unknown } }).capabilities;
+      assert.deepEqual(capabilities.completionProvider, { triggerCharacters: ['.'], resolveProvider: false });
+      client.notify('initialized', {});
+      const uri = 'untitled:Completion.mo';
+      let text = 'model Completion Real original; equation ori end Completion;';
+      client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'modelica', version: 1, text } });
+      async function labelsAt(word: string) {
+        const document = TextDocument.create(uri, 'modelica', 1, text);
+        const response = await client.request('textDocument/completion', {
+          textDocument: { uri }, position: document.positionAt(text.indexOf(word) + word.length),
+          context: { triggerKind: 1 },
+        });
+        assert.equal(response.error, undefined);
+        return (response.result as { items: { label: string }[] }).items.map(item => item.label);
+      }
+      assert.deepEqual(await labelsAt('equation ori'), ['original']);
+      text = 'model Completion Real updated; equation upd end Completion;';
+      client.notify('textDocument/didChange', { textDocument: { uri, version: 2 }, contentChanges: [{ text }] });
+      assert.deepEqual(await labelsAt('equation upd'), ['updated']);
+      text = 'model Completion RuntimeLoadLibA. end Completion;';
+      client.notify('textDocument/didChange', { textDocument: { uri, version: 3 }, contentChanges: [{ text }] });
+      assert.ok((await labelsAt('RuntimeLoadLibA.')).includes('M'));
+      client.notify('textDocument/didClose', { textDocument: { uri } });
+      assert.deepEqual(await labelsAt('RuntimeLoadLibA.'), []);
+    } finally {
+      await client.dispose();
+    }
+  });
+});
+
 describe('syntax diagnostics over LSP', () => {
   for (const eol of ['\n', '\r\n']) {
     it(`matches freshly opened text after an incremental edit sequence (${JSON.stringify(eol)})`, async function () {
