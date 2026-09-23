@@ -48,6 +48,8 @@ import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import { TextEdit } from 'vscode-languageserver/node';
 
 // Built by the root esbuild.config.js (`npm run esbuild` at the repo root),
 // which is what CI runs before the test suite. This is NOT the same output
@@ -240,6 +242,115 @@ async function initializeWithLibB(client: LspTestClient): Promise<void> {
   });
   client.notify('initialized', {});
 }
+
+describe('formatting over LSP', () => {
+  for (const initiallyEnabled of [undefined, false, true]) {
+    it(`configures documentation formatting at startup and runtime (initial: ${initiallyEnabled})`, async function () {
+      this.timeout(20_000);
+      const client = new LspTestClient();
+      const uri = 'untitled:Documentation.mo';
+      const markup = '<html><p>Hello</p><p>World</p></html>';
+      const source = `model M annotation(Documentation(info="${markup}")); end M;`;
+      const document = TextDocument.create(uri, 'modelica', 1, source);
+      try {
+        await client.request('initialize', {
+          processId: process.pid, rootUri: null, capabilities: {},
+          initializationOptions: initiallyEnabled === undefined ? {} : {
+            formatting: { formatDocumentation: initiallyEnabled },
+          },
+        });
+        client.notify('initialized', {});
+        client.notify('textDocument/didOpen', {
+          textDocument: { uri, languageId: 'modelica', version: 1, text: source },
+        });
+        const render = async (override?: boolean, range = false): Promise<string> => {
+          const response = await client.request(range ? 'textDocument/rangeFormatting' : 'textDocument/formatting', {
+            textDocument: { uri },
+            options: { tabSize: 2, insertSpaces: true, ...(override === undefined ? {} : { formatDocumentation: override }) },
+            ...(range ? { range: { start: document.positionAt(0), end: document.positionAt(source.length) } } : {}),
+          });
+          assert.equal(response.error, undefined);
+          return TextDocument.applyEdits(document, response.result as TextEdit[]);
+        };
+        assert.equal((await render()).includes(markup), initiallyEnabled !== true);
+        client.notify('workspace/didChangeConfiguration', {
+          settings: { modelica: { formatting: { formatDocumentation: true } } },
+        });
+        assert.ok((await render()).includes('<html>\n'));
+        assert.ok((await render(false)).includes(markup), 'per-request off overrides enabled configuration');
+        assert.ok((await render(undefined, true)).includes('<html>\n'));
+        assert.ok((await render(false, true)).includes(markup));
+        client.notify('workspace/didChangeConfiguration', {
+          settings: { modelica: { formatting: { formatDocumentation: false } } },
+        });
+        assert.ok((await render()).includes(markup), 'turning the setting off must take effect without restarting');
+        assert.ok((await render(true)).includes('<html>\n'), 'per-request opt-in works for other LSP clients');
+      } finally {
+        await client.dispose();
+      }
+    });
+  }
+
+  it('advertises both providers and formats the latest open document contents', async function () {
+    this.timeout(20_000);
+    const client = new LspTestClient();
+    const uri = 'untitled:Formatting.mo';
+    const options = { tabSize: 2, insertSpaces: true };
+    try {
+      const initialized = await client.request('initialize', {
+        processId: process.pid, rootUri: null, capabilities: {},
+      });
+      const capabilities = (initialized.result as { capabilities: Record<string, unknown> }).capabilities;
+      assert.equal(capabilities.documentFormattingProvider, true);
+      assert.equal(capabilities.documentRangeFormattingProvider, true);
+      client.notify('initialized', {});
+      client.notify('textDocument/didOpen', {
+        textDocument: { uri, languageId: 'modelica', version: 1, text: 'model M Real x=1; end M;' },
+      });
+      const response = await client.request('textDocument/formatting', { textDocument: { uri }, options });
+      assert.equal(response.error, undefined);
+      assert.equal(TextDocument.applyEdits(
+        TextDocument.create(uri, 'modelica', 1, 'model M Real x=1; end M;'), response.result as TextEdit[],
+      ), 'model M\n  Real x = 1;\nend M;\n');
+
+      client.notify('textDocument/didChange', {
+        textDocument: { uri, version: 2 },
+        contentChanges: [{ text: 'model M\nReal x=2;\nend M;\n' }],
+      });
+      const selected = await client.request('textDocument/rangeFormatting', {
+        textDocument: { uri }, options,
+        range: { start: { line: 1, character: 0 }, end: { line: 2, character: 0 } },
+      });
+      assert.equal(selected.error, undefined);
+      const edits = selected.result as { range: { start: { line: number }; end: { line: number } }; newText: string }[];
+      assert.ok(edits.length > 0);
+      assert.ok(edits.every(edit => edit.range.start.line === 1 && edit.range.end.line === 1));
+      assert.equal(TextDocument.applyEdits(
+        TextDocument.create(uri, 'modelica', 2, 'model M\nReal x=2;\nend M;\n'), selected.result as TextEdit[],
+      ), 'model M\n  Real x = 2;\nend M;\n');
+
+      client.notify('textDocument/didChange', {
+        textDocument: { uri, version: 3 },
+        contentChanges: [{ range: { start: { line: 1, character: 7 }, end: { line: 1, character: 8 } }, text: '3' }],
+      });
+      const incremental = await client.request('textDocument/formatting', { textDocument: { uri }, options });
+      assert.equal(TextDocument.applyEdits(
+        TextDocument.create(uri, 'modelica', 3, 'model M\nReal x=3;\nend M;\n'), incremental.result as TextEdit[],
+      ), 'model M\n  Real x = 3;\nend M;\n');
+
+      client.notify('textDocument/didChange', {
+        textDocument: { uri, version: 4 }, contentChanges: [{ text: 'model M Real x=; end M;' }],
+      });
+      const invalid = await client.request('textDocument/formatting', { textDocument: { uri }, options });
+      assert.deepEqual(invalid.result, []);
+      client.notify('textDocument/didClose', { textDocument: { uri } });
+      const closed = await client.request('textDocument/formatting', { textDocument: { uri }, options });
+      assert.deepEqual(closed.result, []);
+    } finally {
+      await client.dispose();
+    }
+  });
+});
 
 describe('runtime library loading', () => {
   it('resolves inside a document whose library was never announced', async function () {

@@ -46,6 +46,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { initializeParser } from './parser';
+import { Parser } from 'web-tree-sitter';
+import { formatDocument } from './formatting';
 import Analyzer from './analyzer';
 import { logger, setLoggerOptions } from './util/logger';
 import { hostTriple, serverName, version, versionInfo } from './version';
@@ -55,6 +57,8 @@ import { hostTriple, serverName, version, versionInfo } from './version';
  */
 export class ModelicaServer {
   #analyzer: Analyzer;
+  #parser: Parser;
+  #formatDocumentation = false;
   #connection: LSP.Connection;
   #documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(TextDocument);
   // Absolute, resolved paths of libraries/workspaces already handed to the
@@ -69,9 +73,10 @@ export class ModelicaServer {
   // modelica.libraries update and must not be unloaded by that update.
   #modelicaPathLibraryPaths: Set<string> = new Set();
 
-  private constructor(analyzer: Analyzer, connection: LSP.Connection) {
+  private constructor(analyzer: Analyzer, connection: LSP.Connection, parser: Parser) {
     this.#analyzer = analyzer;
     this.#connection = connection;
+    this.#parser = parser;
   }
 
   public static async initialize(
@@ -88,7 +93,10 @@ export class ModelicaServer {
 
     const parser = await initializeParser();
     const analyzer = new Analyzer(parser);
-    const server = new ModelicaServer(analyzer, connection);
+    const server = new ModelicaServer(analyzer, connection, parser);
+    server.#formatDocumentation =
+      (initializationOptions as { formatting?: { formatDocumentation?: unknown } } | undefined)
+        ?.formatting?.formatDocumentation === true;
 
     if (workspaceFolders != null) {
       for (const workspace of workspaceFolders) {
@@ -189,6 +197,8 @@ export class ModelicaServer {
       hoverProvider: true,
       signatureHelpProvider: undefined,
       documentSymbolProvider: true,
+      documentFormattingProvider: true,
+      documentRangeFormattingProvider: true,
       colorProvider: false,
       semanticTokensProvider: undefined,
       textDocumentSync: LSP.TextDocumentSyncKind.Incremental,
@@ -213,7 +223,14 @@ export class ModelicaServer {
 
     connection.onInitialized(this.onInitialized.bind(this));
     connection.onShutdown(this.onShutdown.bind(this));
-    connection.onDidChangeTextDocument(this.onDidChangeTextDocument.bind(this));
+    // Subscribe through the document manager: registering another connection
+    // handler would replace its handler and leave formatting with stale text.
+    this.#documents.onDidChangeContent(({ document }) => {
+      if (!document.uri.startsWith('file:')) return;
+      void this.#analyzer.updateDocument(document.uri, document.getText()).catch(err => {
+        logger.warn(`Could not update '${document.uri}': ${err instanceof Error ? err.message : err}`);
+      });
+    });
     connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
     connection.onDidChangeConfiguration(this.onDidChangeConfiguration.bind(this));
     // Workspace folder change subscription is done in `onInitialized`, not
@@ -225,6 +242,27 @@ export class ModelicaServer {
     connection.onDefinition(this.onDefinition.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
     connection.onHover(this.onHover.bind(this));
+    connection.onDocumentFormatting(this.onFormatting.bind(this));
+    connection.onDocumentRangeFormatting(this.onFormatting.bind(this));
+  }
+
+  private onFormatting(
+    params: LSP.DocumentFormattingParams | LSP.DocumentRangeFormattingParams,
+  ): LSP.TextEdit[] {
+    const document = this.#documents.get(params.textDocument.uri);
+    if (!document) return [];
+    try {
+      const options = {
+        ...params.options,
+        formatDocumentation: typeof params.options.formatDocumentation === 'boolean'
+          ? params.options.formatDocumentation : this.#formatDocumentation,
+      };
+      return formatDocument(this.#parser, document, options,
+        'range' in params ? params.range : undefined);
+    } catch (err) {
+      logger.warn(`Could not format '${document.uri}': ${err instanceof Error ? err.message : err}`);
+      return [];
+    }
   }
 
   private async onInitialized(): Promise<void> {
@@ -267,14 +305,6 @@ export class ModelicaServer {
 
   private async onShutdown(): Promise<void> {
     logger.debug('onShutdown');
-  }
-
-  private async onDidChangeTextDocument(params: LSP.DidChangeTextDocumentParams): Promise<void> {
-    logger.debug('onDidChangeTextDocument');
-    for (const change of params.contentChanges) {
-      const range = 'range' in change ? change.range : undefined;
-      await this.#analyzer.updateDocument(params.textDocument.uri, change.text, range);
-    }
   }
 
   private async onDidChangeWatchedFiles(params: LSP.DidChangeWatchedFilesParams): Promise<void> {
@@ -368,7 +398,12 @@ export class ModelicaServer {
    */
   private async onDidChangeConfiguration(params: LSP.DidChangeConfigurationParams): Promise<void> {
     logger.debug('onDidChangeConfiguration');
-    const settings = params.settings as { modelica?: { libraries?: unknown } } | undefined;
+    const settings = params.settings as {
+      modelica?: { libraries?: unknown; formatting?: { formatDocumentation?: unknown } };
+    } | undefined;
+    if (settings?.modelica?.formatting !== undefined) {
+      this.#formatDocumentation = settings.modelica.formatting.formatDocumentation === true;
+    }
     if (!Array.isArray(settings?.modelica?.libraries)) {
       return;
     }

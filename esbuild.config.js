@@ -33,6 +33,9 @@ esbuild.build({
   bundle: true,
   outfile: './out/server.js',
   platform: 'node',
+  // Bundle language-service ESM builds; their UMD wrappers contain runtime
+  // relative require() calls that cannot be relocated into a single bundle.
+  mainFields: ['module', 'main'],
   external: [
     'vscode',
   ],
