@@ -48,6 +48,7 @@ import path from 'node:path';
 import { initializeParser } from './parser';
 import { Parser } from 'web-tree-sitter';
 import { formatDocument } from './formatting';
+import { documentHighlights } from './analysis/documentHighlights';
 import { syntaxDiagnosticReport } from './util/diagnostics';
 import { DiagnosticQueue } from './util/diagnosticQueue';
 import Analyzer from './analyzer';
@@ -63,6 +64,7 @@ export class ModelicaServer {
   #diagnosticQueue = new DiagnosticQueue(uri => this.publishSyntaxDiagnostics(uri));
   #syntaxDiagnosticsEnabled = false;
   #completionEnabled = false;
+  #documentHighlightsEnabled = false;
   #formatDocumentation = false;
   #connection: LSP.Connection;
   #documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(TextDocument);
@@ -99,6 +101,7 @@ export class ModelicaServer {
     const parser = await initializeParser();
     const analyzer = new Analyzer(parser);
     const server = new ModelicaServer(analyzer, connection, parser);
+    server.#documentHighlightsEnabled = initializationOptions?.documentHighlights?.enabled === true;
     server.#completionEnabled =
       (initializationOptions as { completion?: { enabled?: unknown } } | undefined)?.completion?.enabled === true;
     server.#syntaxDiagnosticsEnabled =
@@ -201,6 +204,7 @@ export class ModelicaServer {
   public capabilities(): LSP.ServerCapabilities {
     return {
       completionProvider: { triggerCharacters: ['.'], resolveProvider: false },
+      documentHighlightProvider: true,
       declarationProvider: true,
       definitionProvider: true,
       hoverProvider: true,
@@ -258,6 +262,17 @@ export class ModelicaServer {
     connection.onDefinition(this.onDefinition.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
     connection.onHover(this.onHover.bind(this));
+    connection.onDocumentHighlight(params => {
+      if (!this.#documentHighlightsEnabled) return [];
+      const document = this.#documents.get(params.textDocument.uri);
+      if (!document || document.languageId !== 'modelica') return [];
+      try {
+        return documentHighlights(this.#parser, document, params.position);
+      } catch (error) {
+        logger.warn(`Could not highlight '${document.uri}': ${error instanceof Error ? error.message : error}`);
+        return [];
+      }
+    });
     connection.onCompletion(params => {
       if (!this.#completionEnabled) return { isIncomplete: false, items: [] };
       const document = this.#documents.get(params.textDocument.uri);
@@ -458,10 +473,14 @@ export class ModelicaServer {
         formatting?: { formatDocumentation?: unknown };
         diagnostics?: { syntax?: unknown };
         completion?: { enabled?: unknown };
+        documentHighlights?: { enabled?: unknown };
       };
     } | undefined;
     if (settings?.modelica?.completion !== undefined) {
       this.#completionEnabled = settings.modelica.completion.enabled === true;
+    }
+    if (settings?.modelica?.documentHighlights !== undefined) {
+      this.#documentHighlightsEnabled = settings.modelica.documentHighlights?.enabled === true;
     }
     if (settings?.modelica?.diagnostics !== undefined) {
       this.setSyntaxDiagnostics(settings.modelica.diagnostics.syntax === true);

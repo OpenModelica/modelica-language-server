@@ -77,6 +77,9 @@ export function createClientOptions(): LanguageClientOptions {
       configurationSection: 'modelica',
     },
     initializationOptions: {
+      documentHighlights: {
+        enabled: workspace.getConfiguration('modelica').get<boolean>('documentHighlights.enabled', false),
+      },
       completion: {
         enabled: workspace.getConfiguration('modelica').get<boolean>('completion.enabled', false),
       },

@@ -259,6 +259,51 @@ async function initializeWithLibB(client: LspTestClient): Promise<void> {
 }
 
 
+
+describe('document highlights over LSP', () => {
+  for (const initial of [undefined, false, true, 'true']) {
+    it('supports default-off, live toggles and incremental edits (initial: ' + JSON.stringify(initial) + ')', async function () {
+      this.timeout(15000);
+      const client = new LspTestClient();
+      try {
+        const initialized = await client.request('initialize', {
+          processId: process.pid, rootUri: null, capabilities: {},
+          initializationOptions: { libraries: [LIB_A], documentHighlights: { enabled: initial } },
+        });
+        assert.equal((initialized.result as { capabilities: { documentHighlightProvider: boolean } }).capabilities.documentHighlightProvider, true);
+        client.notify('initialized', {});
+        const uri = 'untitled:Highlights.mo';
+        let text = 'model M RuntimeLoadLibA.M x; equation x=x; end M;';
+        client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'modelica', version: 1, text } });
+        const request = () => client.request('textDocument/documentHighlight', {
+          textDocument: { uri }, position: { line: 0, character: text.indexOf('x;') },
+        });
+        const first = await request();
+        assert.equal(first.error, undefined);
+        assert.equal((first.result as unknown[]).length, initial === true ? 3 : 0);
+        client.notify('workspace/didChangeConfiguration', { settings: { modelica: { documentHighlights: { enabled: true } } } });
+        assert.equal(((await request()).result as unknown[]).length, 3);
+        assert.ok(!client.logs.some(log => log.includes(FILE_M)), 'highlights must not load external types');
+        const start = text.lastIndexOf('x;');
+        client.notify('textDocument/didChange', {
+          textDocument: { uri, version: 2 },
+          contentChanges: [{ range: { start: { line: 0, character: start }, end: { line: 0, character: start + 1 } }, text: '1' }],
+        });
+        text = text.slice(0, start) + '1' + text.slice(start + 1);
+        assert.equal(((await request()).result as unknown[]).length, 2);
+        client.notify('workspace/didChangeConfiguration', { settings: { modelica: { documentHighlights: { enabled: false } } } });
+        assert.deepEqual((await request()).result, []);
+        client.notify('workspace/didChangeConfiguration', { settings: { modelica: { documentHighlights: { enabled: true } } } });
+        assert.equal(((await request()).result as unknown[]).length, 2);
+        client.notify('textDocument/didClose', { textDocument: { uri } });
+        assert.deepEqual((await request()).result, []);
+      } finally {
+        await client.dispose();
+      }
+    });
+  }
+});
+
 describe('completion over LSP', () => {
 
   for (const initial of [undefined, false, true, 'true']) {
