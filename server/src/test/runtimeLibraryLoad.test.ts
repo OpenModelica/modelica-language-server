@@ -259,6 +259,58 @@ async function initializeWithLibB(client: LspTestClient): Promise<void> {
 }
 
 describe('syntax diagnostics over LSP', () => {
+  for (const eol of ['\n', '\r\n']) {
+    it(`matches freshly opened text after an incremental edit sequence (${JSON.stringify(eol)})`, async function () {
+      this.timeout(20_000);
+      const client = new LspTestClient();
+      const uri = 'untitled:Edited.mo';
+      let version = 1;
+      let text = ['model M', '  String s = "🃏🔑🤖🌳é"; Real x = 1;', 'end M;'].join(eol);
+      const open = (target: string, contents: string) => client.notify('textDocument/didOpen', {
+        textDocument: { uri: target, languageId: 'modelica', version: 1, text: contents },
+      });
+      async function compare(hasErrors: boolean) {
+        const fresh = `untitled:Fresh${version}.mo`;
+        open(fresh, text);
+        const edited = await client.waitForDiagnostics(uri, version);
+        const baseline = await client.waitForDiagnostics(fresh, 1);
+        assert.equal(edited.diagnostics.length > 0, hasErrors);
+        assert.deepEqual(edited.diagnostics, baseline.diagnostics, 'incremental and fresh documents must agree');
+        client.notify('textDocument/didClose', { textDocument: { uri: fresh } });
+      }
+      function replace(start: number, length: number, replacement: string) {
+        const document = TextDocument.create(uri, 'modelica', version, text);
+        client.notify('textDocument/didChange', {
+          textDocument: { uri, version: ++version },
+          contentChanges: [{
+            range: { start: document.positionAt(start), end: document.positionAt(start + length) },
+            text: replacement,
+          }],
+        });
+        text = text.slice(0, start) + replacement + text.slice(start + length);
+      }
+      try {
+        await client.request('initialize', {
+          processId: process.pid, rootUri: null, capabilities: {}, initializationOptions: { diagnostics: { syntax: true } },
+        });
+        client.notify('initialized', {});
+        open(uri, text);
+        await compare(false);
+        replace(text.indexOf('= 1') + 2, 1, ''); // Remove the expression after Unicode on the same line.
+        await compare(true);
+        replace(0, 0, '// 🃏🔑🤖🌳é' + eol); // Shift an existing error across lines.
+        await compare(true);
+        replace(text.indexOf('= ;') + 2, 0, '2');
+        await compare(false);
+        const ending = text.indexOf('end M;');
+        replace(ending, 'end M;'.length, '');
+        await compare(true);
+        replace(text.length, 0, 'end M;');
+        await compare(false);
+      } finally { await client.dispose(); }
+    });
+  }
+
   it('drains many substantial tabs and a large document while serving requests and cancelling closed tabs', async function () {
     this.timeout(30_000);
     const client = new LspTestClient();
