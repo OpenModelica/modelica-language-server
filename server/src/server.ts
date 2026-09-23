@@ -48,6 +48,8 @@ import path from 'node:path';
 import { initializeParser } from './parser';
 import { Parser } from 'web-tree-sitter';
 import { formatDocument } from './formatting';
+import { syntaxDiagnostics } from './util/diagnostics';
+import { DiagnosticQueue } from './util/diagnosticQueue';
 import Analyzer from './analyzer';
 import { logger, setLoggerOptions } from './util/logger';
 import { hostTriple, serverName, version, versionInfo } from './version';
@@ -58,6 +60,8 @@ import { hostTriple, serverName, version, versionInfo } from './version';
 export class ModelicaServer {
   #analyzer: Analyzer;
   #parser: Parser;
+  #diagnosticQueue = new DiagnosticQueue(uri => this.publishSyntaxDiagnostics(uri));
+  #syntaxDiagnosticsEnabled = false;
   #formatDocumentation = false;
   #connection: LSP.Connection;
   #documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(TextDocument);
@@ -94,6 +98,8 @@ export class ModelicaServer {
     const parser = await initializeParser();
     const analyzer = new Analyzer(parser);
     const server = new ModelicaServer(analyzer, connection, parser);
+    server.#syntaxDiagnosticsEnabled =
+      (initializationOptions as { diagnostics?: { syntax?: unknown } } | undefined)?.diagnostics?.syntax === true;
     server.#formatDocumentation =
       (initializationOptions as { formatting?: { formatDocumentation?: unknown } } | undefined)
         ?.formatting?.formatDocumentation === true;
@@ -226,10 +232,17 @@ export class ModelicaServer {
     // Subscribe through the document manager: registering another connection
     // handler would replace its handler and leave formatting with stale text.
     this.#documents.onDidChangeContent(({ document }) => {
+      if (this.#syntaxDiagnosticsEnabled && document.languageId === 'modelica') {
+        this.#diagnosticQueue.schedule(document.uri);
+      }
       if (!document.uri.startsWith('file:')) return;
       void this.#analyzer.updateDocument(document.uri, document.getText()).catch(err => {
         logger.warn(`Could not update '${document.uri}': ${err instanceof Error ? err.message : err}`);
       });
+    });
+    this.#documents.onDidClose(({ document }) => {
+      this.#diagnosticQueue.cancel(document.uri);
+      if (this.#syntaxDiagnosticsEnabled) void connection.sendDiagnostics({ uri: document.uri, diagnostics: [] });
     });
     connection.onDidChangeWatchedFiles(this.onDidChangeWatchedFiles.bind(this));
     connection.onDidChangeConfiguration(this.onDidChangeConfiguration.bind(this));
@@ -244,6 +257,34 @@ export class ModelicaServer {
     connection.onHover(this.onHover.bind(this));
     connection.onDocumentFormatting(this.onFormatting.bind(this));
     connection.onDocumentRangeFormatting(this.onFormatting.bind(this));
+  }
+
+  private publishSyntaxDiagnostics(uri: string): void {
+    if (!this.#syntaxDiagnosticsEnabled) return;
+    const current = this.#documents.get(uri);
+    if (!current || current.languageId !== 'modelica') return;
+    // Parsing and collecting are synchronous, so no older result can finish
+    // after a newer edit or close. Always read the latest managed document.
+    try {
+      const diagnostics = syntaxDiagnostics(this.#parser, current);
+      void this.#connection.sendDiagnostics({ uri, version: current.version, diagnostics });
+    } catch (err) {
+      logger.warn(`Could not check '${uri}': ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  private setSyntaxDiagnostics(enabled: boolean): void {
+    if (enabled === this.#syntaxDiagnosticsEnabled) return;
+    this.#syntaxDiagnosticsEnabled = enabled;
+    for (const document of this.#documents.all()) {
+      if (document.languageId !== 'modelica') continue;
+      if (enabled) {
+        this.#diagnosticQueue.schedule(document.uri);
+      } else {
+        this.#diagnosticQueue.cancel(document.uri);
+        void this.#connection.sendDiagnostics({ uri: document.uri, version: document.version, diagnostics: [] });
+      }
+    }
   }
 
   private onFormatting(
@@ -304,6 +345,7 @@ export class ModelicaServer {
   }
 
   private async onShutdown(): Promise<void> {
+    this.#diagnosticQueue.dispose();
     logger.debug('onShutdown');
   }
 
@@ -399,8 +441,15 @@ export class ModelicaServer {
   private async onDidChangeConfiguration(params: LSP.DidChangeConfigurationParams): Promise<void> {
     logger.debug('onDidChangeConfiguration');
     const settings = params.settings as {
-      modelica?: { libraries?: unknown; formatting?: { formatDocumentation?: unknown } };
+      modelica?: {
+        libraries?: unknown;
+        formatting?: { formatDocumentation?: unknown };
+        diagnostics?: { syntax?: unknown };
+      };
     } | undefined;
+    if (settings?.modelica?.diagnostics !== undefined) {
+      this.setSyntaxDiagnostics(settings.modelica.diagnostics.syntax === true);
+    }
     if (settings?.modelica?.formatting !== undefined) {
       this.#formatDocumentation = settings.modelica.formatting.formatDocumentation === true;
     }

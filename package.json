@@ -48,6 +48,11 @@
       "type": "object",
       "title": "Modelica Language Server",
       "properties": {
+        "modelica.diagnostics.syntax": {
+          "type": "boolean",
+          "default": false,
+          "description": "Check Modelica syntax in open documents after a typing pause. Off by default. Does not perform compiler/type checks or validate embedded HTML/XML."
+        },
         "modelica.formatting.formatDocumentation": {
           "type": "boolean",
           "default": false,

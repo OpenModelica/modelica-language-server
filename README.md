@@ -19,6 +19,20 @@ features:
 
   ![Outline](images/outline_demo.png)
 
+- Optional Modelica syntax diagnostics, **off by default**. Enable with
+  `"modelica.diagnostics.syntax": true` in VS Code settings. The toggle takes
+  effect without restarting; disabling cancels queued checks and clears errors.
+  Other LSP clients can set `initializationOptions.diagnostics.syntax` or send
+  `settings.modelica.diagnostics.syntax` in a configuration change.
+  Diagnostics in open documents are updated after a short typing
+  pause and cleared when fixed or closed. Errors come from the bundled
+  tree-sitter grammar, with up to 100 reports per document. Missing tokens are
+  marked at their insertion point. Grammar limitations can affect the results;
+  these are not compiler/type checks and do not validate embedded HTML or XML.
+  A shared queue coalesces edits for 150 ms and checks one document at a time,
+  yielding at least 25 ms between files. Closing a document cancels queued work.
+  Checks do not scan unopened libraries or retain additional syntax trees.
+
 - Goto declarations.
 
   ![Goto Declaration](images/goto_declaration_demo.png)
