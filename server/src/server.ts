@@ -62,6 +62,7 @@ export class ModelicaServer {
   #parser: Parser;
   #diagnosticQueue = new DiagnosticQueue(uri => this.publishSyntaxDiagnostics(uri));
   #syntaxDiagnosticsEnabled = false;
+  #completionEnabled = false;
   #formatDocumentation = false;
   #connection: LSP.Connection;
   #documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(TextDocument);
@@ -98,6 +99,8 @@ export class ModelicaServer {
     const parser = await initializeParser();
     const analyzer = new Analyzer(parser);
     const server = new ModelicaServer(analyzer, connection, parser);
+    server.#completionEnabled =
+      (initializationOptions as { completion?: { enabled?: unknown } } | undefined)?.completion?.enabled === true;
     server.#syntaxDiagnosticsEnabled =
       (initializationOptions as { diagnostics?: { syntax?: unknown } } | undefined)?.diagnostics?.syntax === true;
     server.#formatDocumentation =
@@ -197,7 +200,7 @@ export class ModelicaServer {
    */
   public capabilities(): LSP.ServerCapabilities {
     return {
-      completionProvider: undefined,
+      completionProvider: { triggerCharacters: ['.'], resolveProvider: false },
       declarationProvider: true,
       definitionProvider: true,
       hoverProvider: true,
@@ -255,6 +258,17 @@ export class ModelicaServer {
     connection.onDefinition(this.onDefinition.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
     connection.onHover(this.onHover.bind(this));
+    connection.onCompletion(params => {
+      if (!this.#completionEnabled) return { isIncomplete: false, items: [] };
+      const document = this.#documents.get(params.textDocument.uri);
+      if (!document || document.languageId !== 'modelica') return { isIncomplete: false, items: [] };
+      try {
+        return this.#analyzer.complete(document, params.position, uri => this.#documents.get(uri));
+      } catch (error) {
+        logger.warn(`Could not complete '${document.uri}': ${error instanceof Error ? error.message : error}`);
+        return { isIncomplete: false, items: [] };
+      }
+    });
     connection.onDocumentFormatting(this.onFormatting.bind(this));
     connection.onDocumentRangeFormatting(this.onFormatting.bind(this));
   }
@@ -443,8 +457,12 @@ export class ModelicaServer {
         libraries?: unknown;
         formatting?: { formatDocumentation?: unknown };
         diagnostics?: { syntax?: unknown };
+        completion?: { enabled?: unknown };
       };
     } | undefined;
+    if (settings?.modelica?.completion !== undefined) {
+      this.#completionEnabled = settings.modelica.completion.enabled === true;
+    }
     if (settings?.modelica?.diagnostics !== undefined) {
       this.setSyntaxDiagnostics(settings.modelica.diagnostics.syntax === true);
     }

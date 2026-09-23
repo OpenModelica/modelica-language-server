@@ -58,12 +58,22 @@ import * as TreeSitterUtil from './util/tree-sitter';
 import { getAllDeclarationsInTree } from './util/declarations';
 import { logger } from './util/logger';
 import { extractHoverInformation } from './util/hoverUtil';
+import { completeDocument } from './analysis/completion';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
 export default class Analyzer {
   #project: ModelicaProject;
 
   public constructor(parser: Parser) {
     this.#project = new ModelicaProject(parser);
+  }
+
+  public complete(
+    document: TextDocument,
+    position: LSP.Position,
+    openDocument: (uri: string) => TextDocument | undefined,
+  ): LSP.CompletionList {
+    return completeDocument(this.#project, document, position, openDocument);
   }
 
   /**
