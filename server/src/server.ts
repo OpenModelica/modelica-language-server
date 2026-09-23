@@ -58,6 +58,7 @@ import { hostTriple, serverName, version, versionInfo } from './version';
 export class ModelicaServer {
   #analyzer: Analyzer;
   #parser: Parser;
+  #formatDocumentation = false;
   #connection: LSP.Connection;
   #documents: LSP.TextDocuments<TextDocument> = new LSP.TextDocuments(TextDocument);
   // Absolute, resolved paths of libraries/workspaces already handed to the
@@ -93,6 +94,9 @@ export class ModelicaServer {
     const parser = await initializeParser();
     const analyzer = new Analyzer(parser);
     const server = new ModelicaServer(analyzer, connection, parser);
+    server.#formatDocumentation =
+      (initializationOptions as { formatting?: { formatDocumentation?: unknown } } | undefined)
+        ?.formatting?.formatDocumentation === true;
 
     if (workspaceFolders != null) {
       for (const workspace of workspaceFolders) {
@@ -248,7 +252,12 @@ export class ModelicaServer {
     const document = this.#documents.get(params.textDocument.uri);
     if (!document) return [];
     try {
-      return formatDocument(this.#parser, document, params.options,
+      const options = {
+        ...params.options,
+        formatDocumentation: typeof params.options.formatDocumentation === 'boolean'
+          ? params.options.formatDocumentation : this.#formatDocumentation,
+      };
+      return formatDocument(this.#parser, document, options,
         'range' in params ? params.range : undefined);
     } catch (err) {
       logger.warn(`Could not format '${document.uri}': ${err instanceof Error ? err.message : err}`);
@@ -389,7 +398,12 @@ export class ModelicaServer {
    */
   private async onDidChangeConfiguration(params: LSP.DidChangeConfigurationParams): Promise<void> {
     logger.debug('onDidChangeConfiguration');
-    const settings = params.settings as { modelica?: { libraries?: unknown } } | undefined;
+    const settings = params.settings as {
+      modelica?: { libraries?: unknown; formatting?: { formatDocumentation?: unknown } };
+    } | undefined;
+    if (settings?.modelica?.formatting !== undefined) {
+      this.#formatDocumentation = settings.modelica.formatting.formatDocumentation === true;
+    }
     if (!Array.isArray(settings?.modelica?.libraries)) {
       return;
     }

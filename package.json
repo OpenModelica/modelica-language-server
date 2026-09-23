@@ -48,6 +48,11 @@
       "type": "object",
       "title": "Modelica Language Server",
       "properties": {
+        "modelica.formatting.formatDocumentation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Format embedded HTML/XML in literal Documentation info and revisions strings when formatting Modelica. Off by default to preserve documentation exactly."
+        },
         "modelica.libraries": {
           "type": "array",
           "items": {

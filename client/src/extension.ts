@@ -78,6 +78,9 @@ export function createClientOptions(): LanguageClientOptions {
     },
     initializationOptions: {
       libraries: workspace.getConfiguration('modelica').get<string[]>('libraries', []),
+      formatting: {
+        formatDocumentation: workspace.getConfiguration('modelica').get<boolean>('formatting.formatDocumentation', false),
+      },
     },
   };
 }

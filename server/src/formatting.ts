@@ -36,6 +36,7 @@
 import { Node, Parser } from 'web-tree-sitter';
 import { FormattingOptions, Range, TextEdit } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import { formatDocumentation } from './documentationFormatting';
 
 interface Token {
   node: Node;
@@ -121,8 +122,8 @@ function spaceBetween(previous: Node, current: Node): string {
 /**
  * Format only whitespace gaps between syntax tokens. Range formatting expands to
  * complete selected lines, but uses the entire tree for indentation context.
- * Invalid/incomplete Modelica is left untouched; strings and comments are always
- * preserved byte-for-byte, including embedded HTML and annotation data.
+ * Invalid/incomplete Modelica is left untouched. Strings and comments are
+ * preserved unless documentation formatting is explicitly enabled.
  */
 export function formatDocument(
   parser: Parser,
@@ -198,7 +199,19 @@ export function formatDocument(
       if (!range || token.node.startIndex >= start && token.node.startIndex < end) {
         replaceGap(from, token.node.startIndex, whitespace);
       }
-      const rendered = whitespace + token.node.text;
+      let tokenText = token.node.text;
+      if (options.formatDocumentation === true && (!range ||
+          token.node.startIndex >= document.offsetAt(range.start) &&
+          token.node.endIndex <= document.offsetAt(range.end))) {
+        tokenText = formatDocumentation(token.node, options, eol);
+        if (tokenText !== token.node.text) {
+          edits.push(TextEdit.replace({
+            start: document.positionAt(token.node.startIndex),
+            end: document.positionAt(token.node.endIndex),
+          }, tokenText));
+        }
+      }
+      const rendered = whitespace + tokenText;
       const lastNewline = rendered.lastIndexOf('\n');
       const tail = lastNewline >= 0 ? rendered.slice(lastNewline + 1) : rendered;
       column = (lastNewline >= 0 ? 0 : column) + tail.replace(/\t/g, ' '.repeat(tabSize)).length;

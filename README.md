@@ -34,15 +34,38 @@ features:
   with their class headers, as in the Modelica Standard Library.
 
   Selection formatting covers the selected lines and uses the surrounding code
-  to determine indentation. Strings (including XML/HTML documentation), comments,
-  and declaration order are preserved. Inputs and outputs are not reordered,
+  to determine indentation. Strings (including XML/HTML documentation) are preserved
+  by default. Comments and declaration order are preserved. Inputs and outputs are not reordered,
   since that can change positional function calls. Files rejected by the bundled
   Modelica grammar are left untouched. Other LSP clients can supply `printWidth`
   as an additional formatting option.
 
-  Embedded XML/HTML is preserved exactly, including whitespace, escaped quotes,
-  and line endings inside strings. Only the surrounding Modelica annotation
-  syntax is formatted; no XML/HTML formatter is invoked, even for malformed markup.
+  With `modelica.formatting.formatDocumentation` off (the default), embedded
+  XML/HTML is preserved exactly, including whitespace, escaped quotes and line
+  endings. Only the surrounding Modelica annotation syntax is formatted.
+
+  To opt in to documentation formatting, add this to your VS Code settings:
+
+  ```json
+  {
+    "modelica.formatting.formatDocumentation": true
+  }
+  ```
+
+  The setting applies to Format Document and Format Selection without restarting
+  the server. Complete literal `Documentation(info="...", revisions="...")`
+  values are delegated to the HTML language service for `<html>` documents
+  (including an optional HTML doctype), or an XML formatter for other XML markup.
+  Ordinary strings, concatenated documentation and partially selected string
+  literals are left unchanged. XML that cannot be parsed is preserved. This is
+  formatting, not syntax checking; diagnostics are tracked in [#87][html-diagnostics]
+  and [#88][xml-diagnostics].
+
+  Other LSP clients can set `initializationOptions.formatting.formatDocumentation`,
+  send `settings.modelica.formatting.formatDocumentation` in a configuration
+  change, or pass `formatDocumentation` in a formatting request's `options`.
+  An explicit per-request boolean overrides the server setting, so a client can
+  disable markup formatting for an individual request even when it is enabled.
 
   ![VS Code demonstration: open the Command Palette, choose Format Document, and see two-space Modelica indentation](images/formatting_demo.gif)
 
@@ -56,6 +79,9 @@ features:
   4. To format only part of a file, select the lines and run **Format Selection**.
 
   [View or download the formatting GIF](images/formatting_demo.gif).
+
+[html-diagnostics]: https://github.com/OpenModelica/modelica-language-server/issues/87
+[xml-diagnostics]: https://github.com/OpenModelica/modelica-language-server/issues/88
 
 ## Configuration
 

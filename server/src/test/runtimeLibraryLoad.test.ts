@@ -244,6 +244,53 @@ async function initializeWithLibB(client: LspTestClient): Promise<void> {
 }
 
 describe('formatting over LSP', () => {
+  for (const initiallyEnabled of [undefined, false, true]) {
+    it(`configures documentation formatting at startup and runtime (initial: ${initiallyEnabled})`, async function () {
+      this.timeout(20_000);
+      const client = new LspTestClient();
+      const uri = 'untitled:Documentation.mo';
+      const markup = '<html><p>Hello</p><p>World</p></html>';
+      const source = `model M annotation(Documentation(info="${markup}")); end M;`;
+      const document = TextDocument.create(uri, 'modelica', 1, source);
+      try {
+        await client.request('initialize', {
+          processId: process.pid, rootUri: null, capabilities: {},
+          initializationOptions: initiallyEnabled === undefined ? {} : {
+            formatting: { formatDocumentation: initiallyEnabled },
+          },
+        });
+        client.notify('initialized', {});
+        client.notify('textDocument/didOpen', {
+          textDocument: { uri, languageId: 'modelica', version: 1, text: source },
+        });
+        const render = async (override?: boolean, range = false): Promise<string> => {
+          const response = await client.request(range ? 'textDocument/rangeFormatting' : 'textDocument/formatting', {
+            textDocument: { uri },
+            options: { tabSize: 2, insertSpaces: true, ...(override === undefined ? {} : { formatDocumentation: override }) },
+            ...(range ? { range: { start: document.positionAt(0), end: document.positionAt(source.length) } } : {}),
+          });
+          assert.equal(response.error, undefined);
+          return TextDocument.applyEdits(document, response.result as TextEdit[]);
+        };
+        assert.equal((await render()).includes(markup), initiallyEnabled !== true);
+        client.notify('workspace/didChangeConfiguration', {
+          settings: { modelica: { formatting: { formatDocumentation: true } } },
+        });
+        assert.ok((await render()).includes('<html>\n'));
+        assert.ok((await render(false)).includes(markup), 'per-request off overrides enabled configuration');
+        assert.ok((await render(undefined, true)).includes('<html>\n'));
+        assert.ok((await render(false, true)).includes(markup));
+        client.notify('workspace/didChangeConfiguration', {
+          settings: { modelica: { formatting: { formatDocumentation: false } } },
+        });
+        assert.ok((await render()).includes(markup), 'turning the setting off must take effect without restarting');
+        assert.ok((await render(true)).includes('<html>\n'), 'per-request opt-in works for other LSP clients');
+      } finally {
+        await client.dispose();
+      }
+    });
+  }
+
   it('advertises both providers and formats the latest open document contents', async function () {
     this.timeout(20_000);
     const client = new LspTestClient();

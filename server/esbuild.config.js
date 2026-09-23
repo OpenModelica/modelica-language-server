@@ -14,6 +14,8 @@ const buildOptions = {
   bundle: true,
   outfile: './out/server.js',
   platform: 'node',
+  // Bundle language-service ESM builds instead of UMD runtime require() calls.
+  mainFields: ['module', 'main'],
   format: 'cjs',
   tsconfig: './tsconfig.json',
   alias: { 'web-tree-sitter': webTreeSitterCjs },

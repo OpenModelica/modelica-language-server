@@ -70,4 +70,44 @@ suite('Modelica formatting providers', () => {
     assert.ok(edits?.length);
     assert.equal(applyEdits(document, edits), document.getText().replace('Real x(start=1,fixed=true);', '  Real x(start = 1, fixed = true);'));
   });
+
+  test('documentation formatting is off by default and can be enabled and disabled', async () => {
+    const documentationUri = getDocUri('formattingDocumentation.mo');
+    await activate(documentationUri);
+    const document = await vscode.workspace.openTextDocument(documentationUri);
+    const config = vscode.workspace.getConfiguration('modelica');
+    const setting = 'formatting.formatDocumentation';
+    const previous = config.inspect<boolean>(setting)?.workspaceValue;
+    assert.equal(config.inspect<boolean>(setting)?.defaultValue, false);
+    const html = '<html><p>Hello</p><p>World</p></html>';
+    const xml = '<root><entry>First</entry><entry>Second</entry></root>';
+
+    async function waitForFormatting(enabled: boolean): Promise<void> {
+      const deadline = Date.now() + 15_000;
+      let result = '';
+      do {
+        const edits = await vscode.commands.executeCommand<vscode.TextEdit[]>(
+          'vscode.executeFormatDocumentProvider', documentationUri, { tabSize: 2, insertSpaces: true },
+        );
+        if (edits?.length) {
+          result = applyEdits(document, edits);
+          if (enabled ? result.includes('<html>\n') && result.includes('<root>\n') :
+            result.includes(html) && result.includes(xml)) return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } while (Date.now() < deadline);
+      assert.fail(`Documentation formatting did not become ${enabled ? 'enabled' : 'disabled'}: ${result}`);
+    }
+
+    try {
+      await config.update(setting, undefined, vscode.ConfigurationTarget.Workspace);
+      await waitForFormatting(false);
+      await config.update(setting, true, vscode.ConfigurationTarget.Workspace);
+      await waitForFormatting(true);
+      await config.update(setting, false, vscode.ConfigurationTarget.Workspace);
+      await waitForFormatting(false);
+    } finally {
+      await config.update(setting, previous, vscode.ConfigurationTarget.Workspace);
+    }
+  });
 });

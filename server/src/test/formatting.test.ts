@@ -428,6 +428,8 @@ end M;`;
 
     it(`preserves XML documentation exactly during document formatting (${lineEnding})`, () => {
       const result = format(source, options);
+      assert.equal(format(source, { ...options, formatDocumentation: false }), result,
+        'explicitly off must behave like the default');
       assert.notEqual(result, source);
       assert.ok(result.includes(`info = "${xml}"`), 'XML, escapes and internal whitespace must remain unchanged');
       assertPreserved(source, result);
@@ -441,6 +443,7 @@ end M;`;
         document.positionAt(source.lastIndexOf('end M;')),
       );
       const result = format(source, options, range);
+      assert.equal(format(source, { ...options, formatDocumentation: false }, range), result);
       assert.notEqual(result, source);
       assert.ok(result.includes(`info = "${xml}"`));
       assert.ok(result.startsWith(`model M${eol}Real x=1;${eol}`), 'unselected declaration must remain unchanged');
@@ -491,5 +494,93 @@ end M;`;
   it('leaves an empty selection untouched', () => {
     const source = 'model M\nReal x=1;\nend M;';
     assert.equal(format(source, undefined, Range.create(1, 0, 1, 0)), source);
+  });
+
+  for (const [language, markup] of [
+    ['HTML', '<html><body><p>Hello</p><p>World</p></body></html>'],
+    ['XML', String.raw`<root><a/><b value=\"a=b, c\">text</b></root>`],
+  ]) {
+    for (const field of ['info', 'revisions']) {
+      const source = `model M Real x=1; annotation(Documentation(${field}="${markup}")); end M;`;
+      it(`leaves ${language} ${field} unchanged by default and when explicitly off`, () => {
+        const expected = format(source);
+        assert.ok(expected.includes(`"${markup}"`));
+        assertPreserved(source, expected);
+        assert.equal(format(source, { tabSize: 2, insertSpaces: true, formatDocumentation: false }), expected);
+      });
+
+      it(`formats ${language} ${field} only when explicitly enabled`, () => {
+        const options = { tabSize: 2, insertSpaces: true, formatDocumentation: true };
+        const result = format(source, options);
+        assert.notEqual(result, format(source));
+        assert.ok(result.includes(language === 'HTML' ? '<html>\n' : '<root>\n'));
+        const tree = parser.parse(result);
+        try {
+          assert.equal(tree?.rootNode.hasError, false, 'formatted markup must remain a valid Modelica string');
+        } finally {
+          tree?.delete();
+        }
+        assert.equal(format(result, options), result);
+      });
+    }
+  }
+
+  it('does not format ordinary strings, other annotations or concatenated documentation when enabled', () => {
+    const markup = '<html><p>Keep</p><p>unchanged</p></html>';
+    const source = `model M "${markup}" String s="${markup}"; annotation(other="${markup}",Documentation(info="${markup}"+"extra")); end M;`;
+    const result = format(source, { tabSize: 2, insertSpaces: true, formatDocumentation: true });
+    assertPreserved(source, result);
+  });
+
+  it('does not replace a documentation string unless the selection contains the entire literal', () => {
+    const source = 'model M\nannotation(Documentation(info="<html><p>Hello</p><p>World</p></html>"));\nend M;';
+    const document = TextDocument.create('untitled:html.mo', 'modelica', 1, source);
+    const options = { tabSize: 2, insertSpaces: true, formatDocumentation: true };
+    const partial = Range.create(document.positionAt(source.indexOf('<p>')), document.positionAt(source.indexOf('</html>')));
+    const result = format(source, options, partial);
+    assertPreserved(source, result);
+    const whole = format(source, options, Range.create(1, 0, 2, 0));
+    assert.ok(whole.includes('<html>\n'));
+    assert.ok(whole.startsWith('model M\n'));
+    assert.ok(whole.endsWith('\nend M;'));
+  });
+
+  it('preserves malformed XML while still formatting surrounding Modelica when enabled', () => {
+    const source = 'model M Real x=1; annotation(Documentation(info="<root><mismatch></root>")); end M;';
+    const result = format(source, { tabSize: 2, insertSpaces: true, formatDocumentation: true });
+    assertPreserved(source, result);
+    assert.ok(result.includes('Real x = 1;'));
+  });
+
+  it('respects XML whitespace preservation and re-escapes quotes and backslashes', () => {
+    const markup = String.raw`<root><text xml:space=\"preserve\">  keep   spacing </text><path value=\"C:\\tmp\"/><data><![CDATA[a < b && c > d]]></data></root>`;
+    const source = `model M\r\nannotation(Documentation(info="${markup}"));\r\nend M;\r\n`;
+    const options = { tabSize: 2, insertSpaces: true, formatDocumentation: true };
+    const result = format(source, options);
+    assert.ok(result.includes('<root>\r\n  <text'));
+    assert.ok(result.includes('  keep   spacing '));
+    assert.ok(result.includes(String.raw`value=\"C:\\tmp\"`));
+    assert.ok(result.includes('<![CDATA[a < b && c > d]]>'));
+    const tree = parser.parse(result);
+    try { assert.equal(tree?.rootNode.hasError, false); } finally { tree?.delete(); }
+    assert.equal(format(result, options), result);
+  });
+
+  it('preserves preformatted HTML and accepts HTML void elements when enabled', () => {
+    const source = 'model M annotation(Documentation(info="<html><pre>  a  b\n c</pre><p>Line<br>next</p></html>")); end M;';
+    const options = { tabSize: 4, insertSpaces: false, formatDocumentation: true };
+    const result = format(source, options);
+    assert.ok(result.includes('<pre>  a  b\n c</pre>'));
+    assert.ok(result.includes('<br>'));
+    assert.ok(result.includes('<html>\n\\t'));
+    assert.equal(format(result, options), result);
+  });
+
+  it('stabilizes wrapped HTML paragraphs with inline emphasis', () => {
+    const source = 'model M annotation(Documentation(info="<html><p>This blocks computes the output <strong>y</strong> as the input <strong>u</strong> raised to <em>exponent</em>:</p></html>")); end M;';
+    const options = { tabSize: 2, insertSpaces: true, formatDocumentation: true };
+    const result = format(source, options);
+    assert.ok(result.includes('<html>\n'));
+    assert.equal(format(result, options), result);
   });
 });
