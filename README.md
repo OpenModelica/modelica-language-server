@@ -60,6 +60,20 @@ features:
 
   ![Hover](images/hover_demo.png)
 
+- Semantic highlighting for locally resolved classes and types, including their
+  matching `end` names. Packages are classified as namespaces, records as structs,
+  functions as functions, enumeration types as enums, other `type` declarations
+  as types, and models/blocks/connectors/classes as classes. Declarations carry
+  the `declaration` modifier; references and `end` names use the same token type.
+
+  Tokens use the current unsaved document and do not load or scan libraries.
+  Unknown external/imported/inherited names retain ordinary syntax highlighting.
+  This complements the MetaModelica extension's syntax grammar. Colors depend on
+  the theme; VS Code's `editor.semanticHighlighting.enabled` setting controls
+  semantic coloring (set it to `true` to enable it regardless of theme).
+  Other LSP clients can request `textDocument/semanticTokens/full` using the
+  advertised legend. Range and delta token requests are not implemented.
+
 - Optional document highlights, **off by default**. Enable
   `"modelica.documentHighlights.enabled": true` to highlight a symbol's declaration
   and references in the current document when placing the cursor on it. The
@@ -241,6 +255,23 @@ Found a bug or having issues? Open a
   instance of VSCode, open a document in 'modelica' language mode.
   - Check the console output of `Language Server Modelica` to see the parsed
     tree of the opened file.
+
+## Semantic highlighting tests
+
+`npm run esbuild && npm run test:server` runs the server and protocol tests;
+`npm run test:e2e` also checks token types and unsaved edits in VS Code.
+To repeat the editor tests with MetaModelica's syntax grammar installed, use a
+separate extension directory (replace `/path/to/code` with a VS Code CLI):
+
+```bash
+/path/to/code --extensions-dir /tmp/modelica-test-extensions --install-extension AnHeuermann.metamodelica@1.6.1
+MODELICA_TEST_EXTENSIONS_DIR=/tmp/modelica-test-extensions MODELICA_TEST_METAMODELICA=1 npm run test:e2e
+```
+
+The coexistence run asserts that MetaModelica is installed and contributes the
+Modelica grammar, then verifies the same semantic tokens through VS Code.
+It does not assert theme-specific pixel colors. To use an already downloaded
+VS Code build, set `VSCODE_TEST_EXECUTABLE_PATH` to its executable.
 
 ## MSL sanity
 

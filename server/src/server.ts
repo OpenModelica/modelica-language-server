@@ -49,6 +49,7 @@ import { initializeParser } from './parser';
 import { Parser } from 'web-tree-sitter';
 import { formatDocument } from './formatting';
 import { documentHighlights } from './analysis/documentHighlights';
+import { semanticTokens, semanticTokensLegend } from './analysis/semanticTokens';
 import { syntaxDiagnosticReport } from './util/diagnostics';
 import { DiagnosticQueue } from './util/diagnosticQueue';
 import Analyzer from './analyzer';
@@ -213,7 +214,7 @@ export class ModelicaServer {
       documentFormattingProvider: true,
       documentRangeFormattingProvider: true,
       colorProvider: false,
-      semanticTokensProvider: undefined,
+      semanticTokensProvider: { legend: semanticTokensLegend, full: true, range: false },
       textDocumentSync: LSP.TextDocumentSyncKind.Incremental,
       workspace: {
         workspaceFolders: {
@@ -262,6 +263,16 @@ export class ModelicaServer {
     connection.onDefinition(this.onDefinition.bind(this));
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
     connection.onHover(this.onHover.bind(this));
+    connection.languages.semanticTokens.on(params => {
+      const document = this.#documents.get(params.textDocument.uri);
+      if (!document || document.languageId !== 'modelica') return { data: [] };
+      try {
+        return semanticTokens(this.#parser, document);
+      } catch (error) {
+        logger.warn(`Could not compute semantic tokens for '${document.uri}': ${error instanceof Error ? error.message : error}`);
+        return { data: [] };
+      }
+    });
     connection.onDocumentHighlight(params => {
       if (!this.#documentHighlightsEnabled) return [];
       const document = this.#documents.get(params.textDocument.uri);

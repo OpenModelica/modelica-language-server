@@ -1146,3 +1146,43 @@ describe('runtime library loading', () => {
     }
   });
 });
+
+
+describe('semantic tokens over LSP', () => {
+  it('advertises full tokens and uses incremental unsaved edits without library IO', async function () {
+    this.timeout(15000);
+    const client = new LspTestClient();
+    try {
+      const initialized = await client.request('initialize', {
+        processId: process.pid, rootUri: null, capabilities: {},
+        initializationOptions: { libraries: [LIB_A] },
+      });
+      const provider = (initialized.result as { capabilities: { semanticTokensProvider: { legend: { tokenTypes: string[] }; full: boolean; range: boolean } } }).capabilities.semanticTokensProvider;
+      assert.equal(provider.full, true);
+      assert.equal(provider.range, false);
+      const classIndex = provider.legend.tokenTypes.indexOf('class');
+      client.notify('initialized', {});
+      const uri = 'untitled:SemanticTokens.mo';
+      const request = () => client.request('textDocument/semanticTokens/full', { textDocument: { uri } });
+      assert.deepEqual((await request()).result, { data: [] });
+      const text = 'model M RuntimeLoadLibA.M x; end M;';
+      client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'modelica', version: 1, text } });
+      const first = await request();
+      assert.equal(first.error, undefined);
+      assert.deepEqual(first.result, { data: [0, 6, 1, classIndex, 1, 0, text.lastIndexOf('M;') - 6, 1, classIndex, 0] });
+      assert.ok(!client.logs.some(log => log.includes(FILE_M)), 'tokens must not load external types');
+      client.notify('textDocument/didChange', {
+        textDocument: { uri, version: 2 },
+        contentChanges: [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } }, text: 'package' }],
+      });
+      const namespaceIndex = provider.legend.tokenTypes.indexOf('namespace');
+      assert.deepEqual((await request()).result, { data: [0, 8, 1, namespaceIndex, 1, 0, text.lastIndexOf('M;') - 6, 1, namespaceIndex, 0] });
+      client.notify('textDocument/didClose', { textDocument: { uri } });
+      assert.deepEqual((await request()).result, { data: [] });
+      client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'plaintext', version: 3, text } });
+      assert.deepEqual((await request()).result, { data: [] });
+    } finally {
+      await client.dispose();
+    }
+  });
+});
