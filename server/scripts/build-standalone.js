@@ -40,6 +40,15 @@ console.log('\n[2/4] Copying node binary...');
 fs.copyFileSync(process.execPath, OUT_BINARY);
 fs.chmodSync(OUT_BINARY, 0o755);
 
+// 2a. Strip the carrier on Linux. The official node binary keeps its symbol table and debug
+// info, which Debian's lintian reports as unstripped-binary-or-object for every package that
+// ships the server (OpenModelica's omedit .deb). It has to happen before the injection: postject
+// adds the blob as a note, and stripping afterwards could remove it.
+if (process.platform === 'linux') {
+  console.log('\n[2a] Stripping the node binary...');
+  run('strip', ['--strip-all', OUT_BINARY]);
+}
+
 // 3. Remove existing code signature on macOS (required before injection).
 if (IS_MAC) {
   console.log('\n[2b] Removing macOS code signature...');
