@@ -242,6 +242,16 @@ Found a bug or having issues? Open a
   - Check the console output of `Language Server Modelica` to see the parsed
     tree of the opened file.
 
+## OMEdit client compatibility
+
+The separate **OMEdit Qt client compatibility** CI job runs OMEdit's production
+Qt LSP client against the standalone server built from this revision. It checks
+initialization, hover, cross-file definitions and unsaved document changes.
+This tests client/server compatibility without launching the OMEdit GUI or OMC.
+Release publication requires the job to pass. See the
+[Qt smoke test instructions](tests/qt-smoke/README.md) for local commands,
+client revision, coverage boundaries and test artifacts.
+
 ## MSL sanity
 
 The separate **MSL sanity** CI job checks every `.mo` file in the pinned MSL
