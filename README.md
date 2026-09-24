@@ -60,6 +60,25 @@ features:
 
   ![Hover](images/hover_demo.png)
 
+- Optional document highlights, **off by default**. Enable
+  `"modelica.documentHighlights.enabled": true` to highlight a symbol's declaration
+  and references in the current document when placing the cursor on it. The
+  setting changes live; other LSP clients can use
+  `initializationOptions.documentHighlights.enabled` or
+  `settings.modelica.documentHighlights.enabled` in a configuration change.
+  Each request uses the latest unsaved buffer, without loading libraries or
+  scanning other open documents. Disabled requests skip highlight parsing.
+  Temporary syntax trees are released after each request.
+
+  Supports local classes (including their `end` names), components, explicit
+  import bindings, enumeration literals, and loop/comprehension indices. Local
+  instance members are matched through locally declared types. Shadowed names,
+  comments and strings are not merged. Unresolved external/inherited members,
+  wildcard imports and type aliases are not guessed. Highlights use neutral
+  `Text` ranges rather than assigning read/write meaning to Modelica equations.
+  An editor may still show its own textual occurrence highlighting when the
+  LSP feature is disabled.
+
 - Format Document and Format Selection, using two-space Modelica indentation by
   default. Editor indentation options override this default. Formatting adjusts
   whitespace, spaces around operators and after commas, and wraps long argument

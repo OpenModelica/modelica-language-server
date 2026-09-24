@@ -48,6 +48,11 @@
       "type": "object",
       "title": "Modelica Language Server",
       "properties": {
+        "modelica.documentHighlights.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Highlight occurrences of locally resolved Modelica symbols in the current document. Off by default. Can be toggled without restarting."
+        },
         "modelica.completion.enabled": {
           "type": "boolean",
           "default": false,
