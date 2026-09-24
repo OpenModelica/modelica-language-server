@@ -42,6 +42,67 @@ jobs:
         working-directory: server
         run: npm run test:msl -- ../.msl-sanity/Modelica
 
+  qt-client-smoke:
+    name: OMEdit Qt client compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout server under test
+        uses: actions/checkout@v7
+
+      - name: Checkout pinned OMEdit client sources
+        uses: actions/checkout@v7
+        with:
+          repository: OpenModelica/OpenModelica
+          ref: 8e77d72e0f5ed79a9c6fc404191f7988f168432d
+          path: .qt-smoke-openmodelica
+          persist-credentials: false
+          sparse-checkout: |
+            OMEdit/OMEditLIB/LSP
+            OMEdit/OMEditLIB/Util
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install Qt Test and build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake g++ qt6-base-dev
+
+      - name: Build standalone server under test
+        working-directory: server
+        run: |
+          npm ci
+          npm run build:standalone
+
+      - name: Build production OMEdit client with the Qt test harness
+        run: |
+          cmake -S tests/qt-smoke -B "$RUNNER_TEMP/qt-client-smoke" \
+            -DOPENMODELICA_SOURCE="$GITHUB_WORKSPACE/.qt-smoke-openmodelica" \
+            -DMODELICA_LSP_EXECUTABLE="$GITHUB_WORKSPACE/server/out/modelica-language-server"
+          cmake --build "$RUNNER_TEMP/qt-client-smoke" --parallel 2
+          git -C .qt-smoke-openmodelica rev-parse HEAD > "$RUNNER_TEMP/qt-client-smoke/omedit-revision.txt"
+          server/out/modelica-language-server --version > "$RUNNER_TEMP/qt-client-smoke/server-version.txt"
+
+      - name: Test OMEdit client against the server
+        run: ctest --test-dir "$RUNNER_TEMP/qt-client-smoke" --output-on-failure
+
+      - name: Upload Qt compatibility test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: omedit-qt-client-smoke
+          path: |
+            ${{ runner.temp }}/qt-client-smoke/qt-smoke.xml
+            ${{ runner.temp }}/qt-client-smoke/Temporary/LastTest.log
+            ${{ runner.temp }}/qt-client-smoke/*-revision.txt
+            ${{ runner.temp }}/qt-client-smoke/*-version.txt
+          if-no-files-found: warn
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -182,7 +243,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [build, build-binaries, msl-sanity]
+    needs: [build, build-binaries, msl-sanity, qt-client-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: write
