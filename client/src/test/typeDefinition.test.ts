@@ -35,9 +35,22 @@
 
 import assert from 'node:assert/strict';
 import * as vscode from 'vscode';
-import { activate, getDocUri } from './helper';
+import { activate, getDocUri, executeProviderUntilResult } from './helper';
 
-suite('Go to Type Definition', () => {
+suite('Modelica type and implementation navigation', () => {
+  test('Go to Implementation opens the concrete model body through the editor command', async () => {
+    const uri = getDocUri('TypeNavigation/TypeNavigation.mo');
+    await activate(uri);
+    const document = await vscode.workspace.openTextDocument(uri);
+    const position = document.positionAt(document.getText().indexOf('FirstOrder filter') + 2);
+    const locations = await executeProviderUntilResult<vscode.LocationLink[]>(
+      'vscode.executeImplementationProvider', [uri, position],
+    );
+    assert.equal(locations.length, 1);
+    assert.equal(locations[0].targetUri.toString(), uri.toString());
+    assert.match(document.getText(locations[0].targetRange), /^model FirstOrder\s+Real x;\s+end FirstOrder$/);
+  });
+
   test('opens the component type and follows unsaved type changes', async () => {
     const uri = getDocUri('TypeNavigation/TypeNavigation.mo');
     await activate(uri);

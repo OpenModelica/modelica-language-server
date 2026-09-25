@@ -1248,3 +1248,61 @@ describe('type definition over LSP', () => {
     });
   }
 });
+
+describe('implementation navigation over LSP', () => {
+  for (const linkSupport of [true, false]) {
+    it(`shares definition targets for models and functions (linkSupport=${linkSupport})`, async function () {
+      this.timeout(15000);
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'modelica-implementation-'));
+      const filename = path.join(directory, 'Nav.mo');
+      const text = 'package Nav\npartial model Base Real x; end Base;\nmodel Concrete extends Base; equation x=1; end Concrete;\nfunction Twice input Real x; output Real y; algorithm y:=2*x; end Twice;\nmodel Use Concrete item; Real y=Twice(1); Unknown missing; end Use;\nend Nav;';
+      fs.writeFileSync(filename, text);
+      const uri = fileUri(filename);
+      const client = new LspTestClient();
+      try {
+        const initialized = await client.request('initialize', {
+          processId: process.pid, rootUri: null,
+          capabilities: { textDocument: { implementation: { linkSupport } } },
+        });
+        assert.equal((initialized.result as { capabilities: { implementationProvider: boolean } }).capabilities.implementationProvider, true);
+        client.notify('initialized', {});
+        client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'modelica', version: 1, text } });
+        type Link = { targetUri: string; targetRange: { start: { line: number }; end: { line: number } } };
+        for (const [line, token, targetLine] of [[4, 'Concrete', 2], [4, 'Twice', 3], [2, 'Base', 1]] as const) {
+          const params = { textDocument: { uri }, position: { line, character: text.split('\n')[line].indexOf(token) + 1 } };
+          const definition = await client.request('textDocument/definition', params);
+          assert.equal(definition.error, undefined);
+          const links = definition.result as Link[];
+          assert.equal(links.length, 1);
+          assert.equal(links[0].targetUri, uri);
+          assert.equal(links[0].targetRange.start.line, targetLine);
+          assert.equal(links[0].targetRange.end.line, targetLine);
+          const implementation = await client.request('textDocument/implementation', params);
+          assert.equal(implementation.error, undefined);
+          assert.deepEqual(implementation.result, linkSupport ? links : links.map(link => ({ uri: link.targetUri, range: link.targetRange })));
+        }
+        // Unresolved symbols have no implementation destination.
+        const unknown = await client.request('textDocument/implementation', {
+          textDocument: { uri }, position: { line: 4, character: text.split('\n')[4].indexOf('Unknown') + 1 },
+        });
+        assert.equal(unknown.error, undefined);
+        assert.deepEqual(unknown.result, []);
+        client.notify('textDocument/didClose', { textDocument: { uri } });
+        client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'plaintext', version: 2, text } });
+        const unsupported = await client.request('textDocument/implementation', {
+          textDocument: { uri }, position: { line: 4, character: 12 },
+        });
+        assert.equal(unsupported.error, undefined);
+        assert.deepEqual(unsupported.result, []);
+        for (const unavailable of ['untitled:Missing.mo', fileUri(path.join(directory, 'missing.mo'))]) {
+          const response = await client.request('textDocument/implementation', { textDocument: { uri: unavailable }, position: { line: 0, character: 0 } });
+          assert.equal(response.error, undefined);
+          assert.deepEqual(response.result, []);
+        }
+      } finally {
+        await client.dispose();
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
+});
