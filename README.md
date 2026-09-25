@@ -3,19 +3,21 @@
 [![Build][badge-build]][workflow-test]
 [![Coverage Status][badge-coverage]][coverage-project]
 
-A very early version of a Modelica Language Server based on
+An experimental Modelica Language Server based on
 [OpenModelica/tree-sitter-modelica][tree-sitter-modelica].
 
 For syntax highlighting install extension
 [AnHeuermann.metamodelica][ext-metamodelica]
 in addition.
 
+See [CHANGELOG.md](CHANGELOG.md) for the changes in 0.3.6.
+
 ## Functionality
 
 This Language Server works for Modelica files. It has the following language
 features:
 
-- Provide Outline of Modelica files.
+- Document outline.
 
   ![Outline](images/outline_demo.png)
 
@@ -33,7 +35,7 @@ features:
   yielding at least 25 ms between files. Closing a document cancels queued work.
   Checks do not scan unopened libraries or retain additional syntax trees.
 
-- Goto declarations.
+- Go to declaration and definition.
 
   ![Goto Declaration](images/goto_declaration_demo.png)
 
@@ -179,12 +181,12 @@ Typical paths:
 | Windows  | `%APPDATA%\OpenModelica\libraries\`      |
 | macOS    | `~/.openmodelica/libraries/`             |
 
-The server loads all configured libraries at startup, and also picks up
-libraries added later without a restart: adding a workspace folder, or
-pushing an updated `modelica.libraries` list via
-`workspace/didChangeConfiguration`, loads the new library into the running
-session. Removing a workspace folder does not unload its library yet; a
-restart is still required for that.
+The server registers configured library roots at startup, parsing each root
+`package.mo`. Other library files are loaded lazily when needed. The
+**Modelica: Load Library** command adds library roots to `modelica.libraries`.
+Adding or removing workspace folders or updating `modelica.libraries` takes
+effect without restarting. Libraries removed from the setting are retained if
+still needed as workspace libraries or supplied through `modelicaPath`.
 
 ## Installation
 
@@ -195,19 +197,21 @@ restart is still required for that.
 
 ### Via VSIX File
 
-Download the latest
-[modelica-language-server-0.2.2.vsix][vsix-download]
-from the
-[releases][releases]
-page.
+Download the `.vsix` asset from the [release you want to install][releases].
+For version 0.3.6, the filename is `modelica-language-server-0.3.6.vsix`.
 
 Check the [VS Code documentation][vscode-install-vsix]
 on how to install a .vsix file.
 Use the `Install from VSIX` command or run
 
 ```bash
-code --install-extension modelica-language-server-0.2.2.vsix
+code --install-extension modelica-language-server-0.3.6.vsix
 ```
+
+### Standalone server
+
+For npm installation, standalone binaries and configuration in other editors,
+see the [server README](server/README.md).
 
 ## Contributing ❤️
 
@@ -243,8 +247,10 @@ Found a bug or having issues? Open a
 
 ## Building the Language Server
 
-- Run `npm install` and `npm run postinstall` in this folder.This installs all
-  necessary npm modules in both the client and server folder
+- Run `npm ci` in this folder. Its postinstall script installs the client and
+  server dependencies. Node.js 24 is used in CI.
+- Run `npm run esbuild` to build the extension and server bundles, or
+  `npm run esbuild-watch` to rebuild as you edit.
 - Open VS Code on this folder.
 - Press Ctrl+Shift+B to start compiling the client and server in [watch
   mode][vscode-watch-mode].
@@ -253,8 +259,7 @@ Found a bug or having issues? Open a
 - Press ▷ to run the launch config (F5).
 - In the [Extension Development Host][ext-dev-host]
   instance of VSCode, open a document in 'modelica' language mode.
-  - Check the console output of `Language Server Modelica` to see the parsed
-    tree of the opened file.
+  - Check the **Modelica Language Server** output channel for server logs.
 
 ## Semantic highlighting tests
 
@@ -319,14 +324,14 @@ Some parts of the source code are taken from
 [bash-lsp/bash-language-server][bash-language-server],
 licensed under the MIT license and adapted to the Modelica language server.
 
-[OpenModelica/tree-sitter-modelica][tree-sitter-modelica]
-v0.2.3 is included in this extension and is licensed under the [OSMC-PL
+The bundled grammar comes from
+[OpenModelica/tree-sitter-modelica][tree-sitter-modelica] and is licensed under the [OSMC-PL
 v1.8](./server/OSMC-License.txt).
 
 ## Acknowledgments
 
 This package was initially developed by
-[Hochschule Bielefeld - University of Applied Sciences and Arts](hsbi.de).
+[Hochschule Bielefeld - University of Applied Sciences and Arts](https://www.hsbi.de/).
 
 [badge-build]: https://github.com/OpenModelica/modelica-language-server/actions/workflows/test.yml/badge.svg
 [badge-coverage]: https://coveralls.io/repos/github/OpenModelica/modelica-language-server/badge.svg?branch=main
@@ -345,5 +350,4 @@ This package was initially developed by
 [tree-sitter-modelica]: https://github.com/OpenModelica/tree-sitter-modelica
 [vscode-install-vsix]: https://code.visualstudio.com/docs/editor/extension-marketplace#_install-from-a-vsix
 [vscode-watch-mode]: https://code.visualstudio.com/docs/editor/tasks#:~:text=The%20first%20entry%20executes,the%20HelloWorld.js%20file.
-[vsix-download]: https://github.com/OpenModelica/modelica-language-server/releases/download/v0.2.2/modelica-language-server-0.2.2.vsix
 [workflow-test]: https://github.com/OpenModelica/modelica-language-server/actions/workflows/test.yml

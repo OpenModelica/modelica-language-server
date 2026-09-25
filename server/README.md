@@ -10,16 +10,22 @@ This package is the standalone LSP server. It communicates over stdio and works 
 
 ## Features
 
-| Capability                | Status  |
-|---------------------------|---------|
-| Document outline          | ✓       |
-| Go to declaration         | ✓       |
-| Go to definition          | ✓       |
-| Incremental document sync | ✓       |
-| Hover                     | ✓       |
-| Completion                | planned |
+| Capability | Status |
+|------------|--------|
+| Document outline, hover, go to declaration/definition | Supported |
+| Incremental document sync | Supported |
+| Document and range formatting | Supported; documentation markup formatting is opt-in |
+| Syntax diagnostics | Opt-in, off by default |
+| Completion | Opt-in, off by default; basic local/qualified names |
+| Document highlights | Opt-in, off by default; locally resolved symbols |
+| Semantic tokens | Full-document responses for locally resolved classes/types |
+
+These features use the tree-sitter grammar, not compiler-level semantic analysis.
+See the [feature descriptions][features] for scope and limitations.
 
 ## Installation
+
+The npm package requires Node.js 20 or newer. CI uses Node.js 24.
 
 ### Global (CLI)
 
@@ -34,6 +40,15 @@ npm install @openmodelica/modelica-language-server
 ```
 
 The bundled server is at `require.resolve('@openmodelica/modelica-language-server')`.
+
+### Standalone binaries
+
+The [GitHub releases][releases] provide binaries for Linux (x64/arm64), macOS
+(x64/arm64) and Windows (x64). Download the binary matching your platform and
+**both** `tree-sitter-modelica.wasm` and `web-tree-sitter.wasm` from the same
+release. Keep all three files in one directory. On Linux/macOS, make the binary
+executable with `chmod +x <binary-name>` and configure your client to run its
+absolute path with `--stdio`. The standalone binary includes Node.js.
 
 ## Usage
 
@@ -57,7 +72,7 @@ Node.js version:
 
 ```console
 $ modelica-language-server --version
-modelica-language-server 0.3.4
+modelica-language-server 0.3.6
 target: x86_64-unknown-linux-gnu
 node: v24.19.0
 ```
@@ -65,25 +80,31 @@ node: v24.19.0
 A running server reports the same information: its name and version in `serverInfo` of the
 `initialize` result, and all of it in the first log message.
 
-### Example: Zed extension
+### Client configuration
 
-In your Zed extension's `language_server` configuration, point the binary at the globally installed server:
+Pass library roots and opt-in features through the LSP `initialize` request's
+`initializationOptions`, for example:
 
 ```json
 {
-  "language_servers": ["modelica-language-server"],
-  "modelica-language-server": {
-    "binary": {
-      "path": "modelica-language-server",
-      "arguments": ["--stdio"]
-    }
-  }
+  "libraries": ["/path/to/Modelica 4.1.0"],
+  "diagnostics": { "syntax": true },
+  "completion": { "enabled": true },
+  "documentHighlights": { "enabled": true },
+  "formatting": { "formatDocumentation": false }
 }
 ```
 
+Library roots must contain `package.mo`. All feature flags shown above default
+to `false` when omitted. Live updates use `workspace/didChangeConfiguration`
+with the same values inside `settings.modelica`. The `modelicaPath` initialization
+option also accepts library root paths; the server does not read the
+`MODELICAPATH` environment variable directly. Editor-specific configuration
+syntax depends on the client.
+
 ## Library loading and memory management
 
-Modelica libraries (MODELICAPATH entries, `modelica.libraries`, workspace folders) are parsed
+Modelica libraries (`initializationOptions.modelicaPath`, configured libraries, workspace folders) are parsed
 with [`web-tree-sitter`][web-tree-sitter], a wasm build of tree-sitter. This has two consequences
 for how the server manages library state:
 
@@ -118,7 +139,7 @@ Output is placed in `out/`:
 out/
 ├── server.js                   # bundled server
 ├── tree-sitter-modelica.wasm   # Modelica grammar
-└── tree-sitter.wasm            # tree-sitter runtime
+└── web-tree-sitter.wasm        # tree-sitter runtime
 ```
 
 Run directly after building:
@@ -157,3 +178,6 @@ The bundled `tree-sitter-modelica.wasm` grammar is from
 [vscode-languageserver]: https://github.com/microsoft/vscode-languageserver-node
 [web-tree-sitter]: https://github.com/tree-sitter/tree-sitter/tree/master/lib/binding_web
 [workflow-test]: https://github.com/OpenModelica/modelica-language-server/actions/workflows/test.yml
+
+[features]: https://github.com/OpenModelica/modelica-language-server#functionality
+[releases]: https://github.com/OpenModelica/modelica-language-server/releases
