@@ -73,9 +73,12 @@ async function main() {
     // Download VS Code, unzip it and run the integration test
     await runTests({
       version: 'stable',
+      vscodeExecutablePath: process.env.VSCODE_TEST_EXECUTABLE_PATH,
       extensionDevelopmentPath,
       extensionTestsPath,
-      launchArgs: [testFixturePath],
+      extensionTestsEnv: { MODELICA_TEST_METAMODELICA: process.env.MODELICA_TEST_METAMODELICA ?? '0' },
+      launchArgs: [testFixturePath, ...(process.env.MODELICA_TEST_EXTENSIONS_DIR
+        ? ['--extensions-dir', path.resolve(process.env.MODELICA_TEST_EXTENSIONS_DIR)] : [])],
     });
   } catch (_err) {
     console.error('Failed to run tests');

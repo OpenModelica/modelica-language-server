@@ -35,20 +35,33 @@
 
 
 import { Parser } from 'web-tree-sitter';
-import { DocumentHighlight, DocumentHighlightKind, Position } from 'vscode-languageserver/node';
+import { SemanticTokens, SemanticTokensBuilder, SemanticTokensLegend } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { localSymbolOccurrences } from './localSymbols';
 
-export function documentHighlights(parser: Parser, document: TextDocument, position: Position): DocumentHighlight[] {
+export const semanticTokensLegend: SemanticTokensLegend = {
+  tokenTypes: ['namespace', 'class', 'struct', 'function', 'type', 'enum'],
+  tokenModifiers: ['declaration'],
+};
+
+/** Full responses only: no retained trees, library IO or token caches. */
+export function semanticTokens(parser: Parser, document: TextDocument): SemanticTokens {
   const occurrences = localSymbolOccurrences(parser, document);
-  const offset = document.offsetAt(position);
-  const selected = occurrences.find(item => item.start <= offset && offset < item.end) ??
-    occurrences.find(item => item.end === offset);
-  if (!selected) return [];
-  const unique = new Map(occurrences.filter(item => item.symbolId === selected.symbolId).map(item => [item.start, item]));
-  return [...unique.values()].sort((a, b) => a.start - b.start).map(item => ({
-    range: { start: document.positionAt(item.start), end: document.positionAt(item.end) },
-    // Equations are not directional assignments; do not invent read/write semantics.
-    kind: DocumentHighlightKind.Text,
-  }));
+  const unique = new Map(occurrences.filter(item => item.tokenType).map(item => [item.start, item]));
+  const builder = new SemanticTokensBuilder();
+  for (const item of [...unique.values()].sort((a, b) => a.start - b.start)) {
+    if (!item.tokenType) continue;
+    const type = semanticTokensLegend.tokenTypes.indexOf(item.tokenType);
+    const start = document.positionAt(item.start);
+    const end = document.positionAt(item.end);
+    // Split quoted identifiers across lines for clients without multiline support.
+    for (let line = start.line; line <= end.line; line++) {
+      const character = line === start.line ? start.character : 0;
+      const lineEnd = line === end.line ? end.character : document.getText({
+        start: { line, character: 0 }, end: { line: line + 1, character: 0 },
+      }).replace(/[\r\n]+$/, '').length;
+      if (lineEnd > character) builder.push(line, character, lineEnd - character, type, item.declaration ? 1 : 0);
+    }
+  }
+  return { data: builder.build().data };
 }
