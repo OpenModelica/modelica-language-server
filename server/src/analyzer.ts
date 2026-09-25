@@ -289,7 +289,7 @@ export default class Analyzer {
       // Loading may yield to edits. Read the latest buffer after the await so
       // navigation does not race the asynchronous didOpen/didChange update.
       const opened = currentDocument();
-      if (opened && document.getText() !== opened.getText()) document.update(opened.getText());
+      if (opened && document.getText() !== opened.getText()) await document.update(opened.getText());
       const reference = this.getReferenceAt(document, position);
       if (!reference) return null;
       const declaration = resolveReference(document.project, reference, 'declaration');
