@@ -65,6 +65,8 @@ export class ModelicaServer {
   #diagnosticQueue = new DiagnosticQueue(uri => this.publishSyntaxDiagnostics(uri));
   #syntaxDiagnosticsEnabled = false;
   #completionEnabled = false;
+  #typeDefinitionLinkSupport = false;
+  #implementationLinkSupport = false;
   #documentHighlightsEnabled = false;
   #formatDocumentation = false;
   #connection: LSP.Connection;
@@ -89,7 +91,7 @@ export class ModelicaServer {
 
   public static async initialize(
     connection: LSP.Connection,
-    { workspaceFolders, initializationOptions }: LSP.InitializeParams,
+    { workspaceFolders, initializationOptions, capabilities }: LSP.InitializeParams,
   ): Promise<ModelicaServer> {
     // Initialize logger
     setLoggerOptions({
@@ -102,6 +104,8 @@ export class ModelicaServer {
     const parser = await initializeParser();
     const analyzer = new Analyzer(parser);
     const server = new ModelicaServer(analyzer, connection, parser);
+    server.#implementationLinkSupport = capabilities?.textDocument?.implementation?.linkSupport === true;
+    server.#typeDefinitionLinkSupport = capabilities?.textDocument?.typeDefinition?.linkSupport === true;
     server.#documentHighlightsEnabled = initializationOptions?.documentHighlights?.enabled === true;
     server.#completionEnabled =
       (initializationOptions as { completion?: { enabled?: unknown } } | undefined)?.completion?.enabled === true;
@@ -208,6 +212,8 @@ export class ModelicaServer {
       documentHighlightProvider: true,
       declarationProvider: true,
       definitionProvider: true,
+      typeDefinitionProvider: true,
+      implementationProvider: true,
       hoverProvider: true,
       signatureHelpProvider: undefined,
       documentSymbolProvider: true,
@@ -261,6 +267,29 @@ export class ModelicaServer {
     // process on the unhandled rejection.
     connection.onDeclaration(this.onDeclaration.bind(this));
     connection.onDefinition(this.onDefinition.bind(this));
+    // Basic implementation navigation shares Definition's source targets.
+    // It does not search for subclasses or resolve instance-specific redeclarations.
+    connection.onImplementation(async params => {
+      const uri = params.textDocument.uri;
+      const opened = this.#documents.get(uri);
+      if (!uri.startsWith('file:') || (opened && opened.languageId !== 'modelica')) return [];
+      try {
+        const result = await this.#analyzer.findDeclaration(uri, params.position);
+        if (!result) return [];
+        return this.#implementationLinkSupport ? [result] : [{ uri: result.targetUri, range: result.targetRange }];
+      } catch (error) {
+        logger.debug(`Could not resolve implementation: ${error instanceof Error ? error.message : error}`);
+        return [];
+      }
+    });
+    connection.onTypeDefinition(async params => {
+      const uri = params.textDocument.uri;
+      const opened = this.#documents.get(uri);
+      if (!uri.startsWith('file:') || (opened && opened.languageId !== 'modelica')) return [];
+      const result = await this.#analyzer.findTypeDefinition(uri, params.position, () => this.#documents.get(uri));
+      if (!result) return [];
+      return this.#typeDefinitionLinkSupport ? [result] : [{ uri: result.targetUri, range: result.targetSelectionRange }];
+    });
     connection.onDocumentSymbol(this.onDocumentSymbol.bind(this));
     connection.onHover(this.onHover.bind(this));
     connection.languages.semanticTokens.on(params => {

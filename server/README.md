@@ -13,6 +13,8 @@ This package is the standalone LSP server. It communicates over stdio and works 
 | Capability | Status |
 |------------|--------|
 | Document outline, hover, go to declaration/definition | Supported |
+| Go to type definition | Declared classes and named aliases; file-backed documents |
+| Go to implementation | Same source targets as definition; no concrete-subclass search |
 | Incremental document sync | Supported |
 | Document and range formatting | Supported; documentation markup formatting is opt-in |
 | Syntax diagnostics | Opt-in, off by default |

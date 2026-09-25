@@ -39,6 +39,16 @@ features:
 
   ![Goto Declaration](images/goto_declaration_demo.png)
 
+- Go to Type Definition navigates from a component to its declared class or
+  named type alias. For `FirstOrder filter;`, invoking it on `filter` opens
+  `FirstOrder`. It uses unsaved text in file-backed documents and the existing
+  library resolver. Built-in types such as `Real` have no source destination.
+  This does not provide compiler-level inheritance/redeclare resolution.
+
+- Go to Implementation uses the same source targets as Go to Definition,
+  including concrete model and function bodies. It does not enumerate concrete
+  subclasses of partial classes or resolve instance-specific redeclarations.
+
 - Optional autocomplete, **off by default**. Enable with
   `"modelica.completion.enabled": true`; changes take effect without restarting.
   Other LSP clients can use `initializationOptions.completion.enabled` or
