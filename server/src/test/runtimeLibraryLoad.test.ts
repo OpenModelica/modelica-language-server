@@ -47,6 +47,7 @@ import assert from 'node:assert/strict';
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import url from 'node:url';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { PublishDiagnosticsParams, TextEdit } from 'vscode-languageserver/node';
@@ -1185,4 +1186,65 @@ describe('semantic tokens over LSP', () => {
       await client.dispose();
     }
   });
+});
+
+
+describe('type definition over LSP', () => {
+  for (const linkSupport of [true, false]) {
+    it(`resolves current component types and unsaved target positions (linkSupport=${linkSupport})`, async function () {
+      this.timeout(15000);
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'modelica-type-lsp-'));
+      const library = path.join(directory, 'Nav');
+      fs.mkdirSync(library);
+      fs.writeFileSync(path.join(library, 'package.mo'), 'package Nav end Nav;');
+      const target = 'within Nav;\nmodel Target Real x; end Target;';
+      fs.writeFileSync(path.join(library, 'Target.mo'), target);
+      fs.writeFileSync(path.join(library, 'Other.mo'), 'within Nav;\nmodel Other Real x; end Other;');
+      const text = 'within Nav;\nmodel Use\n  Target item;\nequation\n  item.x=1;\nend Use;';
+      const filename = path.join(library, 'Use.mo');
+      fs.writeFileSync(filename, text);
+      const uri = fileUri(filename);
+      const client = new LspTestClient();
+      try {
+        const initialized = await client.request('initialize', {
+          processId: process.pid, rootUri: null, capabilities: { textDocument: { typeDefinition: { linkSupport } } }, initializationOptions: { libraries: [library] },
+        });
+        assert.equal((initialized.result as { capabilities: { typeDefinitionProvider: boolean } }).capabilities.typeDefinitionProvider, true);
+        client.notify('initialized', {});
+        client.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'modelica', version: 1, text } });
+        const request = async () => {
+          const response = await client.request('textDocument/typeDefinition', { textDocument: { uri }, position: { line: 4, character: 4 } });
+          if (!linkSupport && !response.error) {
+            const locations = response.result as { uri: string; range: unknown }[];
+            for (const location of locations) assert.equal(typeof location.uri, 'string');
+            response.result = locations.map(location => ({ targetUri: location.uri, targetSelectionRange: location.range }));
+          }
+          return response;
+        };
+        const first = await request();
+        assert.equal(first.error, undefined);
+        type Link = { targetUri: string; targetSelectionRange: { start: { line: number; character: number }; end: { line: number; character: number } } };
+        assert.equal((first.result as Link[])[0].targetUri, fileUri(path.join(library, 'Target.mo')));
+        assert.deepEqual((first.result as Link[])[0].targetSelectionRange, { start: { line: 1, character: 6 }, end: { line: 1, character: 12 } });
+        // A separate editor buffer moves the destination without saving it.
+        const targetUri = fileUri(path.join(library, 'Target.mo'));
+        client.notify('textDocument/didOpen', { textDocument: { uri: targetUri, languageId: 'modelica', version: 1, text: target.replace('\n', '\n\n') } });
+        assert.equal(((await request()).result as Link[])[0].targetSelectionRange.start.line, 2);
+        client.notify('textDocument/didChange', {
+          textDocument: { uri, version: 2 },
+          contentChanges: [{ range: { start: { line: 2, character: 2 }, end: { line: 2, character: 8 } }, text: 'Other' }],
+        });
+        assert.equal(((await request()).result as Link[])[0].targetUri, fileUri(path.join(library, 'Other.mo')));
+        assert.equal(fs.readFileSync(filename, 'utf8'), text);
+        for (const unavailable of ['untitled:Missing.mo', fileUri(path.join(directory, 'missing.mo'))]) {
+          const response = await client.request('textDocument/typeDefinition', { textDocument: { uri: unavailable }, position: { line: 0, character: 0 } });
+          assert.equal(response.error, undefined);
+          assert.deepEqual(response.result, []);
+        }
+      } finally {
+        await client.dispose();
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
 });

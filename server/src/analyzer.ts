@@ -51,7 +51,7 @@ import {
   UnresolvedReference,
   UnresolvedRelativeReference,
 } from './analysis/reference';
-import resolveReference from './analysis/resolveReference';
+import resolveReference, { variableRefToClassRef } from './analysis/resolveReference';
 import { ModelicaDocument, ModelicaLibrary, ModelicaProject } from './project';
 import { uriToPath } from './util';
 import * as TreeSitterUtil from './util/tree-sitter';
@@ -273,6 +273,41 @@ export default class Analyzer {
       } else {
         logger.debug(`Caught:`, e);
       }
+      return null;
+    }
+  }
+
+  /** Resolve a component's declared type, retaining named aliases as navigation targets. */
+  public async findTypeDefinition(
+    uri: LSP.DocumentUri,
+    position: LSP.Position,
+    currentDocument: () => TextDocument | undefined = () => undefined,
+  ): Promise<LSP.LocationLink | null> {
+    try {
+      const document = await this.#project.getDocument(uriToPath(uri));
+      if (!document) return null;
+      // Loading may yield to edits. Read the latest buffer after the await so
+      // navigation does not race the asynchronous didOpen/didChange update.
+      const opened = currentDocument();
+      if (opened && document.getText() !== opened.getText()) document.update(opened.getText());
+      const reference = this.getReferenceAt(document, position);
+      if (!reference) return null;
+      const declaration = resolveReference(document.project, reference, 'declaration');
+      if (!declaration) return null;
+      const type = TreeSitterUtil.isVariableDeclaration(declaration.node)
+        ? variableRefToClassRef(declaration) : declaration;
+      if (!type || type.node.type !== 'class_definition') return null;
+      const identifier = type.node.childForFieldName('classSpecifier')?.childForFieldName('identifier');
+      if (!identifier || identifier.isMissing) return null;
+      return {
+        ...TreeSitterUtil.createLocationLink(type.document, type.node),
+        targetSelectionRange: {
+          start: type.document.positionAt(identifier.startIndex),
+          end: type.document.positionAt(identifier.endIndex),
+        },
+      };
+    } catch (error) {
+      logger.debug(`Could not resolve type definition: ${error instanceof Error ? error.message : error}`);
       return null;
     }
   }

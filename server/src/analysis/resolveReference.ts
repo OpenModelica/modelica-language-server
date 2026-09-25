@@ -617,7 +617,7 @@ function getPackageClassFromFilePath(
  * @returns a reference to the class definition, or `null` if the type is not a
  *     class (e.g. a builtin like `Real`)
  */
-function variableRefToClassRef(varRef: ResolvedReference): ResolvedReference | null {
+export function variableRefToClassRef(varRef: ResolvedReference): ResolvedReference | null {
   const type = TreeSitterUtil.getTypeSpecifier(varRef.node);
 
   const typeRef = type.isGlobal
