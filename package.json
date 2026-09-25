@@ -97,7 +97,7 @@
     "esbuild": "npm run esbuild-base -- --sourcemap",
     "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch",
     "test-compile": "tsc -b ./",
-    "lint": "eslint ./client/src ./server/src --ext .ts,.tsx",
+    "lint": "eslint ./client/src ./server/src esbuild.config.js eslint.config.js server/esbuild.config.js server/scripts --ext .ts,.tsx,.js",
     "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
     "test:e2e": "run-script-os",
     "test:e2e:win32": "npm run test-compile && powershell -File ./scripts/e2e.ps1",
