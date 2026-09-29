@@ -9,7 +9,7 @@ definition response followed by a successful request. Only the controlled
 empty-response case uses a fixture server; the positive case uses this PR's
 standalone language server.
 
-OpenModelica is pinned to `f233ede45e870c992351ca7ae8aebf71d113532d` from
+OpenModelica is pinned to `af6e22a11ee3936bc27cbac56448d6e611a25d0f` from
 [OpenModelica#17007](https://github.com/OpenModelica/OpenModelica/pull/17007).
 Merge that PR first and update the pin here and in the workflow if the final
 commit changes. Related: [issue #90](https://github.com/OpenModelica/modelica-language-server/issues/90).
