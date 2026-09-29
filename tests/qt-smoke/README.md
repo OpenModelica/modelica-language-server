@@ -54,3 +54,7 @@ these with version/revision metadata, including on failure.
 The `OMEdit Qt client compatibility` job runs on pull requests, main pushes and
 release tags. Release publication depends on this job. Update the pinned client
 revision here and in the workflow together when extending compatibility coverage.
+
+The separate [GUI compatibility subset](../omedit-gui/README.md) builds real
+OMEdit and tests Ctrl+click navigation and fallback against the server under
+test. Keep this smaller protocol job as the fast compatibility check.
