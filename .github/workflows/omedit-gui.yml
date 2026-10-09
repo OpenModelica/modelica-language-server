@@ -1,0 +1,120 @@
+name: OMEdit GUI compatibility
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'tests/omedit-gui/**'
+      - '.github/workflows/omedit-gui.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'tests/omedit-gui/**'
+      - '.github/workflows/omedit-gui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omedit-gui-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  omedit-lsp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.omedit-ccache
+      CCACHE_MAXSIZE: 2G
+    steps:
+      - name: Checkout server under test
+        uses: actions/checkout@v7
+
+      - name: Checkout pinned OMEdit GUI tests
+        uses: actions/checkout@v7
+        with:
+          repository: OpenModelica/OpenModelica
+          # OpenModelica/OpenModelica#17007; update after merge if its SHA changes.
+          ref: af6e22a11ee3936bc27cbac56448d6e611a25d0f
+          path: .omedit-gui-openmodelica
+          persist-credentials: false
+
+      - name: Initialize compiler dependencies
+        working-directory: .omedit-gui-openmodelica
+        run: git submodule update --init --depth 1 OMCompiler/3rdParty OMCompiler/Compiler/boot/bomc
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install GUI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build ccache gfortran default-jdk-headless \
+            flex bison pkg-config gettext libboost-all-dev liblapack-dev \
+            libminizip-dev libexpat1-dev zlib1g-dev \
+            libcurl4-gnutls-dev uuid-dev libreadline-dev libncurses-dev libhdf5-dev \
+            libgl-dev libglu1-mesa-dev qt6-base-dev qt6-svg-dev qt6-webengine-dev \
+            qt6-5compat-dev qt6-tools-dev qt6-tools-dev-tools xvfb xauth
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Restore compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: omedit-gui-${{ runner.os }}-${{ hashFiles('.github/workflows/omedit-gui.yml') }}-${{ github.sha }}
+          restore-keys: |
+            omedit-gui-${{ runner.os }}-${{ hashFiles('.github/workflows/omedit-gui.yml') }}-
+
+      - name: Build standalone server under test
+        working-directory: server
+        run: |
+          npm ci
+          npm run build:standalone
+
+      - name: Configure OMEdit with this server
+        run: |
+          mkdir -p "$RUNNER_TEMP/omedit-results"
+          git -C .omedit-gui-openmodelica rev-parse HEAD > "$RUNNER_TEMP/omedit-results/omedit-revision.txt"
+          git rev-parse HEAD > "$RUNNER_TEMP/omedit-results/server-revision.txt"
+          cmake -S .omedit-gui-openmodelica -B "$RUNNER_TEMP/omedit-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/omedit-install" \
+            -DOM_COMPILER_CACHE=ccache \
+            -DOM_ENABLE_TESTSUITE=OFF \
+            -DOM_ENABLE_OMSIMULATOR=OFF \
+            -DOM_ENABLE_OMSHELL=OFF -DOM_ENABLE_OMNOTEBOOK=OFF -DOM_ENABLE_OMSENS_QT=OFF \
+            -DOM_OMC_ENABLE_CPP_RUNTIME=OFF -DOM_OMC_ENABLE_PARMODELICA=OFF \
+            -DOM_OMC_ENABLE_MOO=OFF -DOM_OMC_ENABLE_OPTIMIZATION=OFF \
+            -DOM_OMEDIT_ENABLE_ANIMATION=OFF -DOM_OMEDIT_ENABLE_TESTS=ON \
+            -DMODELICA_LS_DIR="$GITHUB_WORKSPACE/server/out"
+
+      - name: Build the LSP test subset and compiler
+        run: |
+          cmake --build "$RUNNER_TEMP/omedit-build" --parallel 2 \
+            --target omc LanguageServer LanguageServerNavigation
+          cmake --install "$RUNNER_TEMP/omedit-build" --component omc
+          ccache --show-stats
+
+      - name: Run the GUI LSP subset against this server
+        run: |
+          xvfb-run -a bash tests/omedit-gui/run.sh \
+            "$RUNNER_TEMP/omedit-build" "$RUNNER_TEMP/omedit-install" \
+            "$GITHUB_WORKSPACE/server/out/modelica-language-server" "$RUNNER_TEMP/omedit-results"
+
+      - name: Upload GUI compatibility results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: omedit-gui-lsp
+          path: |
+            ${{ runner.temp }}/omedit-results/
+            ${{ runner.temp }}/omedit-build/OMEdit/Testsuite/Testing/Temporary/LastTest.log
+            ${{ runner.temp }}/omedit-build/CMakeFiles/CMakeConfigureLog.yaml
+          if-no-files-found: warn
