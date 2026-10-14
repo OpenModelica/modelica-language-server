@@ -97,8 +97,10 @@ jobs:
 
       - name: Build the LSP test subset and compiler
         run: |
+          # The omc install component also includes the simulation runtime.
+          # SimulationRuntimeRust builds its OpenModelicaRuntimeC dependency.
           cmake --build "$RUNNER_TEMP/omedit-build" --parallel 2 \
-            --target omc LanguageServer LanguageServerNavigation
+            --target omc SimulationRuntimeRust LanguageServer LanguageServerNavigation
           cmake --install "$RUNNER_TEMP/omedit-build" --component omc
           ccache --show-stats
 

@@ -17,8 +17,10 @@ dependencies such as `fmi-library`. Update the pin here and in the workflow
 together. Related: [issue #90](https://github.com/OpenModelica/modelica-language-server/issues/90).
 
 The workflow runs on server/test/workflow changes in pull requests and main
-pushes, and can be dispatched manually. It builds only the two test targets and
-the compiler they need; it does not run the full OpenModelica test suite.
+pushes, and can be dispatched manually. It builds the two test targets, their
+compiler, and `SimulationRuntimeRust` (including `OpenModelicaRuntimeC`) because
+the `omc` install component requires both runtime libraries. It does not run
+the full OpenModelica test suite.
 Nevertheless, building OMEdit and its compiler dependencies is expensive. The
 job has a 90-minute limit, two build workers and a compiler cache. The individual
 navigation test has a 60-second CTest limit, with no retry hiding failures.
