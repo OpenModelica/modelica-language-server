@@ -36,7 +36,8 @@ xvfb-run -a bash tests/omedit-gui/run.sh \
 ```
 
 Both test registrations are required. A missing server, WASM file, test or
-failed assertion fails the job. The navigation test isolates settings and model
-files and stops its own server. Results include CTest JUnit XML, registration
+failed assertion fails the job. The runner uses a temporary Qt configuration
+and cache profile, removed on exit. The navigation test also isolates settings
+and model files and stops its own server. Results include CTest JUnit XML, registration
 metadata, version/revision information, failure screenshots and CTest's log.
 No MCP endpoint, credentials or user session is needed.

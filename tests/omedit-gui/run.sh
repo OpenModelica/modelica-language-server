@@ -30,6 +30,14 @@ PY
 
 export OPENMODELICAHOME="$install_dir"
 export OMEDIT_TEST_LSP_EXECUTABLE="$server_executable"
+# The navigation test isolates QSettings itself; the companion LanguageServer
+# test uses the standard startup. Isolate both Qt configuration and caches.
+profile_dir=$(mktemp -d "$results_dir/profile.XXXXXX")
+trap 'rm -rf -- "$profile_dir"' EXIT
+export XDG_CONFIG_HOME="$profile_dir/config"
+export XDG_CONFIG_DIRS="$profile_dir/config"
+export XDG_CACHE_HOME="$profile_dir/cache"
+mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
 # OMEdit's CTest wrapper overrides TMPDIR for each test. The workflow uploads
 # those directories from OMEdit/Testsuite/OMEditTestResult as well.
 export TMPDIR="$results_dir"
