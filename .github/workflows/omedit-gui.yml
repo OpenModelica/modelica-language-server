@@ -65,7 +65,8 @@ jobs:
           rustup default stable
 
       - name: Restore compiler cache
-        uses: actions/cache@v6
+        id: ccache
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.CCACHE_DIR }}
           key: omedit-gui-${{ runner.os }}-${{ hashFiles('.github/workflows/omedit-gui.yml') }}-${{ github.sha }}
@@ -97,10 +98,10 @@ jobs:
 
       - name: Build the LSP test subset and compiler
         run: |
-          # The omc install component also includes the simulation runtime.
+          # The omc install component also includes runtimes and man pages.
           # SimulationRuntimeRust builds its OpenModelicaRuntimeC dependency.
           cmake --build "$RUNNER_TEMP/omedit-build" --parallel 2 \
-            --target omc SimulationRuntimeRust LanguageServer LanguageServerNavigation
+            --target omc SimulationRuntimeRust om-manpages LanguageServer LanguageServerNavigation
           cmake --install "$RUNNER_TEMP/omedit-build" --component omc
           ccache --show-stats
 
@@ -121,3 +122,10 @@ jobs:
             ${{ runner.temp }}/omedit-build/OMEdit/Testsuite/Testing/Temporary/LastTest.log
             ${{ runner.temp }}/omedit-build/CMakeFiles/CMakeConfigureLog.yaml
           if-no-files-found: warn
+
+      - name: Save compiler cache
+        if: always() && steps.ccache.outputs.cache-primary-key != '' && steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
