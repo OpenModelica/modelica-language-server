@@ -37,14 +37,14 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: OpenModelica/OpenModelica
-          # OpenModelica/OpenModelica#17007; update after merge if its SHA changes.
-          ref: af6e22a11ee3936bc27cbac56448d6e611a25d0f
+          # Merged OpenModelica/OpenModelica#17007.
+          ref: b78606956261d584c311afe7a70e2ba866065e6f
           path: .omedit-gui-openmodelica
           persist-credentials: false
 
       - name: Initialize compiler dependencies
         working-directory: .omedit-gui-openmodelica
-        run: git submodule update --init --depth 1 OMCompiler/3rdParty OMCompiler/Compiler/boot/bomc
+        run: git submodule update --init --recursive --depth 1 OMCompiler/3rdParty OMCompiler/Compiler/boot/bomc
 
       - name: Setup Node.js
         uses: actions/setup-node@v7

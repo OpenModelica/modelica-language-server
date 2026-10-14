@@ -9,10 +9,12 @@ definition response followed by a successful request. Only the controlled
 empty-response case uses a fixture server; the positive case uses this PR's
 standalone language server.
 
-OpenModelica is pinned to `af6e22a11ee3936bc27cbac56448d6e611a25d0f` from
+OpenModelica is pinned to the merged commit
+`b78606956261d584c311afe7a70e2ba866065e6f` from
 [OpenModelica#17007](https://github.com/OpenModelica/OpenModelica/pull/17007).
-Merge that PR first and update the pin here and in the workflow if the final
-commit changes. Related: [issue #90](https://github.com/OpenModelica/modelica-language-server/issues/90).
+The workflow initializes compiler dependencies recursively, including nested
+dependencies such as `fmi-library`. Update the pin here and in the workflow
+together. Related: [issue #90](https://github.com/OpenModelica/modelica-language-server/issues/90).
 
 The workflow runs on server/test/workflow changes in pull requests and main
 pushes, and can be dispatched manually. It builds only the two test targets and
