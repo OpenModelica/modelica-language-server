@@ -30,7 +30,8 @@ PY
 
 export OPENMODELICAHOME="$install_dir"
 export OMEDIT_TEST_LSP_EXECUTABLE="$server_executable"
-# QDir::temp() puts failure screenshots in the uploaded results directory.
+# OMEdit's CTest wrapper overrides TMPDIR for each test. The workflow uploads
+# those directories from OMEdit/Testsuite/OMEditTestResult as well.
 export TMPDIR="$results_dir"
 "$server_executable" --version > "$results_dir/server-version.txt"
 ctest --test-dir "$build_dir/OMEdit/Testsuite" \

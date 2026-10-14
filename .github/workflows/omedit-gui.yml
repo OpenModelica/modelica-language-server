@@ -115,6 +115,7 @@ jobs:
           name: omedit-gui-lsp
           path: |
             ${{ runner.temp }}/omedit-results/
+            ${{ runner.temp }}/omedit-build/OMEdit/Testsuite/OMEditTestResult/
             ${{ runner.temp }}/omedit-build/OMEdit/Testsuite/Testing/Temporary/LastTest.log
             ${{ runner.temp }}/omedit-build/CMakeFiles/CMakeConfigureLog.yaml
           if-no-files-found: warn
