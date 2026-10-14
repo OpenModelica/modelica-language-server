@@ -72,6 +72,7 @@ jobs:
           key: omedit-gui-${{ runner.os }}-${{ hashFiles('.github/workflows/omedit-gui.yml') }}-${{ github.sha }}
           restore-keys: |
             omedit-gui-${{ runner.os }}-${{ hashFiles('.github/workflows/omedit-gui.yml') }}-
+            omedit-gui-${{ runner.os }}-
 
       - name: Build standalone server under test
         working-directory: server
