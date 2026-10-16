@@ -115,12 +115,13 @@ private slots:
 
     // didOpen/didChange analysis is asynchronous. Retry completed empty/stale
     // responses within a deadline, but never accept fallback GUI navigation.
-    auto definition = [&](const QString &target) -> bool {
+    auto definition = [&](const QString &target, int sourceColumn = 4, int targetLine = 1,
+                          int targetColumn = 0, int targetEndLine = 3) -> bool {
       QElapsedTimer timer;
       timer.start();
       while (timer.elapsed() < 10000) {
         definitions.clear();
-        const int request = client.requestDefinition(uri("Use.mo"), 2, 4);
+        const int request = client.requestDefinition(uri("Use.mo"), 2, sourceColumn);
         if (request < 0 || (definitions.isEmpty() && !definitions.wait(1000))) return false;
         const auto result = definitions.takeFirst();
         if (result.at(0).toInt() != request) return false;
@@ -128,8 +129,8 @@ private slots:
         if (location.uri == uri(target)) {
           // The returned range must cover the target declaration, not Use.mo.
           qInfo() << "Definition:" << location.uri << location.range.start.line << location.range.start.character;
-          return location.range.start.line == 1 && location.range.start.character == 0
-            && location.range.end.line == 3;
+          return location.range.start.line == targetLine && location.range.start.character == targetColumn
+            && location.range.end.line == targetEndLine;
         }
         QTest::qWait(25);
       }
@@ -147,6 +148,21 @@ private slots:
     QVERIFY2(definition("Other.mo"), "Definition did not follow the unsaved edit");
     QFile disk(workspace.filePath("Smoke/Use.mo"));
     QVERIFY(disk.open(QIODevice::ReadOnly));
+    QCOMPARE(disk.readAll(), source.toUtf8());
+    // Modifier labels must resolve in the component type, including inherited
+    // parameters, and follow changes to the unsaved component declaration (#104).
+    writeFile("Base.mo", "within Smoke;\nmodel Base\n  parameter Real Ti=1;\nend Base;\n");
+    writeFile("Controller.mo", "within Smoke;\nmodel Controller\n  extends Base;\nend Controller;\n");
+    writeFile("Alternate.mo", "within Smoke;\nmodel Alternate\n  parameter Real Ti=2;\nend Alternate;\n");
+    const QString modified = "within Smoke;\nmodel Use\n  Controller PI(Ti=0.1);\nend Use;\n";
+    client.changeDocument(uri("Use.mo"), modified);
+    QVERIFY2(definition("Base.mo", modified.section('\n', 2, 2).indexOf("Ti") + 1, 2, 2, 2),
+             "Modifier did not resolve to the inherited parameter");
+    const QString alternate = QString(modified).replace("Controller", "Alternate");
+    client.changeDocument(uri("Use.mo"), alternate);
+    QVERIFY2(definition("Alternate.mo", alternate.section('\n', 2, 2).indexOf("Ti") + 1, 2, 2, 2),
+             "Modifier did not follow the unsaved component type change");
+    disk.seek(0);
     QCOMPARE(disk.readAll(), source.toUtf8());
     client.closeDocument(uri("Use.mo"));
     client.stop();

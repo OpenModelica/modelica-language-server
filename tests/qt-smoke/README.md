@@ -13,6 +13,7 @@ uses Qt Test/QSignalSpy with a real, freshly built standalone server. It checks:
 - A cross-file definition response identifies the expected declaration and range.
 - Hover returns content for that declaration.
 - An unsaved change switches the definition to another file while disk text stays unchanged.
+- A modifier name navigates to an inherited parameter in another file and follows an unsaved component type change.
 - Documents and the server can be closed without a client error.
 
 There is no fake LSP server or reimplementation of the OMEdit transport. The

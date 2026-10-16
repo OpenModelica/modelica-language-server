@@ -264,9 +264,21 @@ function findDeclarationInClass(
   classNode: SyntaxNode,
   symbols: string[],
   referenceKind: ReferenceKind | undefined,
+  visited = new Set<string>(),
 ): (UnresolvedRelativeReference & { kind: ReferenceKind }) | undefined {
   if (classNode.type !== 'class_definition') {
     return undefined;
+  }
+
+  const key = `${document.uri}:${classNode.id}`;
+  if (visited.has(key)) return undefined;
+  visited.add(key);
+
+  // A short class definition supplies the members of its base type.
+  const specifier = classNode.childForFieldName('classSpecifier');
+  if (referenceKind !== 'class' && specifier?.type === 'short_class_specifier') {
+    const base = resolveDeclaredType(document, specifier);
+    return base ? findDeclarationInClass(base.document, base.node, symbols, referenceKind, visited) : undefined;
   }
 
   const elements = classNode
@@ -336,7 +348,8 @@ function findDeclarationInClass(
         superclass.document,
         superclass.node,
         symbols,
-        'variable',
+        referenceKind,
+        visited,
       );
       if (decl) {
         logger.debug(`Declaration ${decl} found in superclass ${superclass}`);
@@ -625,4 +638,53 @@ export function variableRefToClassRef(varRef: ResolvedReference): ResolvedRefere
     : new UnresolvedRelativeReference(varRef.document, varRef.node, type.symbols, 'class');
 
   return resolveReference(varRef.document.project, typeRef, 'declaration');
+}
+
+/** Resolve a type in the lexical scope of its declaration, not the modification. */
+function resolveDeclaredType(document: ModelicaDocument, node: SyntaxNode): ResolvedReference | null {
+  const specifier = node.childForFieldName('typeSpecifier');
+  if (!specifier || specifier.hasError) return null;
+  const type = TreeSitterUtil.getTypeSpecifier(specifier);
+  return resolveReference(document.project, type.isGlobal
+    ? new UnresolvedAbsoluteReference(type.symbols, 'class')
+    : new UnresolvedRelativeReference(document, specifier, type.symbols, 'class'), 'declaration');
+}
+
+/** Look up members strictly inside the modified type, without lexical fallback. */
+function resolveMemberReference(owner: ResolvedReference, symbols: string[]): ResolvedReference | null {
+  let current: ResolvedReference | null = owner;
+  for (const symbol of symbols) {
+    if (current.kind === 'variable') current = variableRefToClassRef(current);
+    if (!current) return null;
+    const member = findDeclarationInClass(current.document, current.node, [symbol], undefined);
+    if (!member) return null;
+    current = new ResolvedReference(member.document, member.node, [...current.symbols, symbol], member.kind);
+  }
+  return current;
+}
+
+/** Resolve the label of an element modification in the type it modifies. */
+export function resolveModificationName(
+  document: ModelicaDocument,
+  name: SyntaxNode,
+  symbols: string[],
+): ResolvedReference | null {
+  const argumentsNode = name.parent?.parent;
+  const modification = argumentsNode?.parent;
+  if (argumentsNode?.type !== 'argument_list' || modification?.type !== 'class_modification') return null;
+  const owner = modification.parent;
+  let scope: ResolvedReference | null = null;
+  if (owner?.type === 'modification') {
+    const modified = owner.parent;
+    if (modified?.type === 'declaration') {
+      const clause = TreeSitterUtil.findParent(modified, node => node.type === 'component_clause');
+      if (clause) scope = resolveDeclaredType(document, clause);
+    } else if (modified?.type === 'element_modification') {
+      const outerName = modified.childForFieldName('name');
+      if (outerName) scope = resolveModificationName(document, outerName, TreeSitterUtil.getTypeSpecifier(outerName).symbols);
+    }
+  } else if (owner && ['extends_clause', 'short_class_specifier', 'constraining_clause'].includes(owner.type)) {
+    scope = resolveDeclaredType(document, owner);
+  }
+  return scope ? resolveMemberReference(scope, symbols) : null;
 }

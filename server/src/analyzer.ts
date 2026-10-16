@@ -47,11 +47,12 @@ import * as fsSync from 'node:fs';
 import * as url from 'node:url';
 
 import {
+  ResolvedReference,
   UnresolvedAbsoluteReference,
   UnresolvedReference,
   UnresolvedRelativeReference,
 } from './analysis/reference';
-import resolveReference, { variableRefToClassRef } from './analysis/resolveReference';
+import resolveReference, { resolveModificationName, variableRefToClassRef } from './analysis/resolveReference';
 import { ModelicaDocument, ModelicaLibrary, ModelicaProject } from './project';
 import { uriToPath } from './util';
 import * as TreeSitterUtil from './util/tree-sitter';
@@ -258,7 +259,7 @@ export default class Analyzer {
     );
 
     try {
-      const result = resolveReference(document.project, reference, 'declaration');
+      const result = this.resolveReferenceAt(document, position);
       if (!result) {
         logger.debug(`Didn't find declaration of ${reference.symbols.join('.')}`);
         return null;
@@ -290,9 +291,7 @@ export default class Analyzer {
       // navigation does not race the asynchronous didOpen/didChange update.
       const opened = currentDocument();
       if (opened && document.getText() !== opened.getText()) await document.update(opened.getText());
-      const reference = this.getReferenceAt(document, position);
-      if (!reference) return null;
-      const declaration = resolveReference(document.project, reference, 'declaration');
+      const declaration = this.resolveReferenceAt(document, position);
       if (!declaration) return null;
       const type = TreeSitterUtil.isVariableDeclaration(declaration.node)
         ? variableRefToClassRef(declaration) : declaration;
@@ -336,7 +335,7 @@ export default class Analyzer {
 
     // Try to resolve via the full resolution system (handles external classes, qualified names).
     try {
-      const result = resolveReference(document.project, reference, 'declaration');
+      const result = this.resolveReferenceAt(document, position);
       if (result?.node.type === 'class_definition') {
         return this.hoverFromClassDef(result.node);
       }
@@ -378,6 +377,19 @@ export default class Analyzer {
         value: hoverInfo,
       } as LSP.MarkupContent,
     };
+  }
+
+  /** Modifier labels use the modified type; binding expressions keep lexical lookup. */
+  private resolveReferenceAt(document: ModelicaDocument, position: LSP.Position): ResolvedReference | null {
+    const offset = document.offsetAt(position);
+    const name = this.findNodeAtPosition(document.tree.rootNode, offset, node => node.type === 'name');
+    if (name?.parent?.type === 'element_modification') {
+      const identifiers = TreeSitterUtil.getTypeSpecifier(name).symbolNodes;
+      if (!identifiers.some(node => node.startIndex <= offset && offset <= node.endIndex)) return null;
+      return resolveModificationName(document, name, identifiers.filter(node => node.startIndex <= offset).map(node => node.text));
+    }
+    const reference = this.getReferenceAt(document, position);
+    return reference ? resolveReference(document.project, reference, 'declaration') : null;
   }
 
   /**
