@@ -45,3 +45,14 @@ export TMPDIR="$results_dir"
 ctest --test-dir "$build_dir/OMEdit/Testsuite" \
   -R '^LanguageServer(Navigation)?$' --no-tests=error --output-on-failure \
   --output-junit "$results_dir/omedit-lsp.xml"
+
+# An older, unpatched native binary must not silently omit the regression.
+python3 - "$build_dir/OMEdit/Testsuite/Testing/Temporary/LastTest.log" <<'PY'
+import re
+import sys
+with open(sys.argv[1]) as stream:
+    log = stream.read()
+case = 'LanguageServerNavigationTest::followsRedeclaredModifierDefinition()'
+if not re.search(r'^PASS\s*:\s*' + re.escape(case) + r'\s*$', log, re.MULTILINE):
+    raise SystemExit(f'Required GUI regression did not pass: {case}')
+PY

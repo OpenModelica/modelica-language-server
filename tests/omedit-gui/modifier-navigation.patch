@@ -1,0 +1,135 @@
+diff --git a/OMEdit/Testsuite/LanguageServer/LanguageServerNavigationTest.cpp b/OMEdit/Testsuite/LanguageServer/LanguageServerNavigationTest.cpp
+--- a/OMEdit/Testsuite/LanguageServer/LanguageServerNavigationTest.cpp
++++ b/OMEdit/Testsuite/LanguageServer/LanguageServerNavigationTest.cpp
+@@ -45,6 +45,7 @@
+ #include <QFile>
+ #include <QFileInfo>
+ #include <QSettings>
++#include <QScopeGuard>
+ #include <QSignalSpy>
+ #include <QTemporaryDir>
+ #include <QTextBlock>
+@@ -92,6 +93,12 @@
+   writeFile("package.mo", "package NavigationSmoke end NavigationSmoke;\n");
+   writeFile("Target.mo", "within NavigationSmoke;\nmodel Target\n  Real x;\nend Target;\n");
+   writeFile("Use.mo", "within NavigationSmoke;\nmodel Use\n  Target component;\nend Use;\n");
++  writeFile("Base.mo", "within NavigationSmoke;\nmodel Base\n  parameter Real Ti=1;\nend Base;\n");
++  writeFile("Other.mo", "within NavigationSmoke;\nmodel Other\n  parameter Real Ti=2;\nend Other;\n");
++  writeFile("Wrapper.mo", "within NavigationSmoke;\nmodel Wrapper\n  replaceable model C=Base;\n  C item;\nend Wrapper;\n");
++  writeFile("Modifiers.mo", "within NavigationSmoke;\nmodel Modifiers\n"
++            "  Wrapper changed(redeclare model C=Other, item(Ti=0.1));\n"
++            "  Wrapper original(item(Ti=0.2));\nend Modifiers;\n");
+   auto *pMainWindow = MainWindow::instance();
+   pMainWindow->getLibraryWidget()->openFile(mWorkspace.filePath("NavigationSmoke/package.mo"));
+   auto *pLibraryTreeModel = pMainWindow->getLibraryWidget()->getLibraryTreeModel();
+@@ -160,6 +167,98 @@
+   QCOMPARE(textEditor(mpTarget)->textCursor().positionInBlock(), 0);
+   QCOMPARE(initialized.count(), 1);
+   QCOMPARE(errors.count(), 0);
++}
++
++void LanguageServerNavigationTest::followsRedeclaredModifierDefinition()
++{
++  auto *pMainWindow = MainWindow::instance();
++  auto *pTreeModel = pMainWindow->getLibraryWidget()->getLibraryTreeModel();
++  auto *pSourceItem = pTreeModel->findLibraryTreeItem("NavigationSmoke.Modifiers");
++  auto *pBaseItem = pTreeModel->findLibraryTreeItem("NavigationSmoke.Base");
++  auto *pOtherItem = pTreeModel->findLibraryTreeItem("NavigationSmoke.Other");
++  QVERIFY(pSourceItem);
++  QVERIFY(pBaseItem);
++  QVERIFY(pOtherItem);
++  pTreeModel->showModelWidget(pBaseItem);
++  pTreeModel->showModelWidget(pOtherItem);
++  pTreeModel->showModelWidget(pSourceItem);
++  auto *pSource = pSourceItem->getModelWidget();
++  auto *pBase = pBaseItem->getModelWidget();
++  auto *pOther = pOtherItem->getModelWidget();
++  QVERIFY(pSource);
++  QVERIFY(pBase);
++  QVERIFY(pOther);
++  auto *pEditor = textEditor(pSource);
++  const QString originalText = pEditor->toPlainText();
++  // Restore even after an assertion fails, so shutdown never asks to save.
++  const auto restore = qScopeGuard([=]() {
++    qobject_cast<ModelicaEditor*>(pSource->getEditor())->setPlainText(originalText);
++    pSourceItem->setIsSaved(true);
++  });
++
++  const QString executable = qEnvironmentVariable("OMEDIT_TEST_LSP_EXECUTABLE");
++  QVERIFY2(QFileInfo(executable).isExecutable(), qPrintable(executable));
++  QVERIFY2(ModelicaLSPClient::missingRuntimeFiles(executable).isEmpty(), "Missing LSP WASM files");
++  mpClient = new ModelicaLSPClient(pMainWindow);
++  pMainWindow->setLSPClient(mpClient);
++  QSignalSpy initialized(mpClient, &LSPClient::initialized);
++  QSignalSpy definitions(mpClient, &LSPClient::definitionResult);
++  QSignalSpy errors(mpClient, &LSPClient::serverError);
++  QVERIFY(mpClient->start(executable, QUrl::fromLocalFile(mWorkspace.path()).toString(),
++                         {mWorkspace.filePath("NavigationSmoke")}));
++  QTRY_COMPARE_WITH_TIMEOUT(initialized.count(), 1, 10000);
++
++  auto navigate = [&](const QString &fragment, ModelWidget *pTarget, const QString &fileName,
++                      const QString &declaration) {
++    // Requiring both the LSP result and the actual destination prevents the
++    // class-tree fallback or a cursor left by a previous click from passing.
++    auto cursor = textEditor(pTarget)->textCursor();
++    cursor.movePosition(QTextCursor::End);
++    textEditor(pTarget)->setTextCursor(cursor);
++    showText(pSource);
++    cursor = pEditor->document()->find(fragment);
++    QVERIFY(!cursor.isNull());
++    cursor.setPosition(cursor.selectionStart() + fragment.indexOf("Ti") + 1);
++    pEditor->setTextCursor(cursor);
++    pEditor->centerCursor();
++    const QPoint point = pEditor->cursorRect(cursor).center();
++    QVERIFY(pEditor->viewport()->rect().contains(point));
++    const int previousCount = definitions.count();
++    QTest::mouseClick(pEditor->viewport(), Qt::LeftButton, Qt::ControlModifier, point);
++    QTRY_COMPARE_WITH_TIMEOUT(definitions.count(), previousCount + 1, 10000);
++    const auto location = qvariant_cast<LSP::Location>(definitions.last().at(1));
++    const QString expectedFile = mWorkspace.filePath("NavigationSmoke/" + fileName);
++    QCOMPARE(QUrl(location.uri).toLocalFile(), expectedFile);
++    QCOMPARE(location.range.start.line, 2);
++    QCOMPARE(location.range.start.character, 2);
++    QTRY_COMPARE_WITH_TIMEOUT(pMainWindow->getModelWidgetContainer()->getCurrentModelWidget(), pTarget, 5000);
++    QCOMPARE(QFileInfo(pTarget->getLibraryTreeItem()->getFileName()).canonicalFilePath(),
++             QFileInfo(expectedFile).canonicalFilePath());
++    QVERIFY(pTarget->getTextViewToolButton()->isChecked());
++    QCOMPARE(textEditor(pTarget)->textCursor().block().text().trimmed(), declaration);
++    QCOMPARE(textEditor(pTarget)->textCursor().positionInBlock(), 0);
++  };
++
++  navigate("item(Ti=0.1)", pOther, "Other.mo", "parameter Real Ti=2;");
++  if (QTest::currentTestFailed()) return;
++  navigate("item(Ti=0.2)", pBase, "Base.mo", "parameter Real Ti=1;");
++  if (QTest::currentTestFailed()) return;
++
++  // Edit the redeclaration with keyboard input, then click immediately. The
++  // editor must flush didChange before requesting the new definition.
++  showText(pSource);
++  auto cursor = pEditor->document()->find("Other");
++  QVERIFY(!cursor.isNull());
++  pEditor->setTextCursor(cursor);
++  QTest::keyClicks(pEditor, "Base");
++  navigate("item(Ti=0.1)", pBase, "Base.mo", "parameter Real Ti=1;");
++  if (QTest::currentTestFailed()) return;
++  QFile sourceFile(mWorkspace.filePath("NavigationSmoke/Modifiers.mo"));
++  QVERIFY(sourceFile.open(QIODevice::ReadOnly));
++  QVERIFY(sourceFile.readAll().contains("redeclare model C=Other"));
++  QCOMPARE(initialized.count(), 1);
++  QCOMPARE(errors.count(), 0);
++  QVERIFY(mpClient->isRunning());
+ }
+
+ void LanguageServerNavigationTest::fallsBackOnEmptyDefinitionAndAcceptsNextRequest()
+diff --git a/OMEdit/Testsuite/LanguageServer/LanguageServerNavigationTest.h b/OMEdit/Testsuite/LanguageServer/LanguageServerNavigationTest.h
+--- a/OMEdit/Testsuite/LanguageServer/LanguageServerNavigationTest.h
++++ b/OMEdit/Testsuite/LanguageServer/LanguageServerNavigationTest.h
+@@ -56,6 +56,8 @@
+   void init();
+   //! Checks the file and declaration line returned by the real language server.
+   void followsLanguageServerDefinition();
++  //! Checks instance redeclarations and unsaved edits through actual Ctrl+clicks.
++  void followsRedeclaredModifierDefinition();
+   //! Checks immediate fallback on an empty response and a subsequent request.
+   void fallsBackOnEmptyDefinitionAndAcceptsNextRequest();
+   //! Checks class-tree navigation without a language-server client.
