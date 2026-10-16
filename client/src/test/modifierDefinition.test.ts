@@ -99,4 +99,61 @@ suite('Modelica modifier navigation', () => {
       await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
     }
   });
+
+  test('follows an unsaved class redeclaration without changing another instance', async () => {
+    const uri = getDocUri('ModifierNavigation/RedeclareUse.mo');
+    const baseUri = getDocUri('ModifierNavigation/Base.mo');
+    const otherUri = getDocUri('ModifierNavigation/Other.mo');
+    await activate(uri);
+    const source = await vscode.workspace.openTextDocument(uri);
+    const base = await vscode.workspace.openTextDocument(baseUri);
+    const other = await vscode.workspace.openTextDocument(otherUri);
+    const original = source.getText();
+    async function expectParameter(instance: string, target: vscode.TextDocument, value: number) {
+      const start = source.getText().indexOf(`${instance}(`);
+      assert.ok(start >= 0);
+      const offset = source.getText().indexOf('Ti=0.1', start);
+      assert.ok(offset >= 0);
+      const deadline = Date.now() + 15000;
+      let actualUri: string | undefined;
+      let declaration: string | undefined;
+      do {
+        const locations = await vscode.commands.executeCommand<vscode.LocationLink[]>(
+          'vscode.executeDefinitionProvider', uri, source.positionAt(offset + 1),
+        );
+        if (locations?.length) {
+          assert.equal(locations.length, 1);
+          actualUri = locations[0].targetUri.toString();
+          if (actualUri === target.uri.toString()) {
+            declaration = target.getText(locations[0].targetRange);
+            assert.equal(declaration, `parameter Real Ti = ${value}`);
+            return;
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 25));
+      } while (Date.now() < deadline);
+      assert.equal(actualUri, target.uri.toString());
+      assert.equal(declaration, `parameter Real Ti = ${value}`);
+    }
+    try {
+      await expectParameter('changed', base, 1);
+      await expectParameter('original', base, 1);
+      const start = original.indexOf('C = Base') + 'C = '.length;
+      assert.ok(original.includes('C = Base'));
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(uri, new vscode.Range(source.positionAt(start), source.positionAt(start + 'Base'.length)), 'Other');
+      assert.ok(await vscode.workspace.applyEdit(edit));
+      assert.ok(source.isDirty);
+      await expectParameter('changed', other, 2);
+      await expectParameter('original', base, 1);
+      assert.equal(Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8'), original);
+    } finally {
+      const restore = new vscode.WorkspaceEdit();
+      restore.replace(uri, new vscode.Range(source.positionAt(0), source.positionAt(source.getText().length)), original);
+      assert.ok(await vscode.workspace.applyEdit(restore));
+      await source.save();
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    }
+  });
+
 });

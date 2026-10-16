@@ -190,4 +190,64 @@ describe('Go to Definition on modifier names (#104)', () => {
     assert.equal(await fs.readFile(filename, 'utf8'), text);
   });
 
+  const redeclared = `model Base parameter Real Ti = 1; end Base;
+    model Other parameter Real Ti = 2; end Other;
+    model Wrapper replaceable model C = Base; C item; end Wrapper;`;
+  for (const argumentsText of [
+    'redeclare model C = Other, item(T|i=0.1)',
+    'item(T|i=0.1), redeclare model C = Other',
+    'redeclare model C = Other, item.T|i=0.1',
+  ]) {
+    it(`uses the instance redeclaration for ${argumentsText}`, async () => {
+      await check(`${redeclared} model M Wrapper w(${argumentsText}); end M;`, 'parameter Real Ti = 2');
+    });
+  }
+  it('keeps the default type of another instance', async () => {
+    await check(`${redeclared} model M
+      Wrapper changed(redeclare model C = Other, item(Ti=0.1));
+      Wrapper original(item(T|i=0.1)); end M;`, 'parameter Real Ti = 1');
+  });
+  it('resolves the replacement type in the modifying model scope', async () => {
+    await check(`${redeclared} model M model Replacement = Other;
+      Wrapper w(redeclare model C = Replacement, item(T|i=0.1)); end M;`, 'parameter Real Ti = 2');
+  });
+  it('does not fall back to the default when the replacement type is unavailable', async () => {
+    await check(`${redeclared} model M Wrapper w(redeclare model C = Unknown, item(T|i=0.1)); end M;`, null);
+  });
+  it('follows redeclarations through a second class alias', async () => {
+    await check(`${redeclared} model Wrapped replaceable model C = Base; model Alias = C; Alias item; end Wrapped;
+      model M Wrapped w(redeclare model C = Other, item(T|i=0.1)); end M;`, 'parameter Real Ti = 2');
+  });
+  it('uses a redeclaration on an extends clause', async () => {
+    await check(`${redeclared} model Derived extends Wrapper(redeclare model C = Other); end Derived;
+      model M Derived w(item(T|i=0.1)); end M;`, 'parameter Real Ti = 2');
+  });
+  it('lets the instance override the inherited default redeclaration', async () => {
+    await check(`${redeclared} model Derived extends Wrapper(redeclare model C = Base); end Derived;
+      model M Derived w(redeclare model C = Other, item(T|i=0.1)); end M;`, 'parameter Real Ti = 2');
+  });
+  it('uses a redeclaration on a short class alias', async () => {
+    await check(`${redeclared} model Derived = Wrapper(redeclare model C = Other);
+      model M Derived w(item(T|i=0.1)); end M;`, 'parameter Real Ti = 2');
+  });
+  it('uses a direct component redeclaration', async () => {
+    await check(`${redeclared} model Wrapped replaceable Base item; end Wrapped;
+      model M Wrapped w(redeclare Other item, item(T|i=0.1)); end M;`, 'parameter Real Ti = 2');
+  });
+  it('does not leak an outer redeclaration into an independent nested instance', async () => {
+    await check(`${redeclared} model Outer replaceable model C = Base; Wrapper nested; end Outer;
+      model M Outer w(redeclare model C = Other, nested(item(T|i=0.1))); end M;`, 'parameter Real Ti = 1');
+  });
+
+  it('applies an inherited class redeclaration to a locally declared component', async () => {
+    await check(`${redeclared} model Derived extends Wrapper(redeclare model C = Other); C localItem; end Derived;
+      model M Derived w(localItem(T|i=0.1)); end M;`, 'parameter Real Ti = 2');
+  });
+  it('applies a redeclaration to the qualifier of a component type', async () => {
+    await check(`model Base model T parameter Real Ti = 1; end T; end Base;
+      model Other model T parameter Real Ti = 2; end T; end Other;
+      model Wrapper replaceable model C = Base; C.T item; end Wrapper;
+      model M Wrapper w(redeclare model C = Other, item(T|i=0.1)); end M;`, 'parameter Real Ti = 2');
+  });
+
 });

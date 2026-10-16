@@ -650,20 +650,224 @@ function resolveDeclaredType(document: ModelicaDocument, node: SyntaxNode): Reso
     : new UnresolvedRelativeReference(document, specifier, type.symbols, 'class'), 'declaration');
 }
 
-/** Look up members strictly inside the modified type, without lexical fallback. */
-function resolveMemberReference(owner: ResolvedReference, symbols: string[]): ResolvedReference | null {
-  let current: ResolvedReference | null = owner;
+interface ModificationSource {
+  document: ModelicaDocument;
+  node: SyntaxNode;
+}
+
+/** An instance's declaration plus its modifiers, ordered from defaults to overrides. */
+interface ModifiedReference {
+  reference: ResolvedReference;
+  modifications: ModificationSource[];
+  enclosing?: ModifiedReference;
+}
+
+function classModification(document: ModelicaDocument, node: SyntaxNode): ModificationSource[] {
+  const modification = node.childForFieldName('classModification');
+  return modification ? [{ document, node: modification }] : [];
+}
+
+/** Match the original class declaration, so a same-name type in another scope is not replaced. */
+function typeRedeclaration(
+  type: ResolvedReference,
+  enclosing: ModifiedReference | undefined,
+): ModifiedReference | null | undefined {
+  const name = type.node.childForFieldName('classSpecifier')?.childForFieldName('identifier')?.text;
+  if (!name) return undefined;
+  for (let scope = enclosing; scope; scope = scope.enclosing) {
+    const original = modifiedMember(scope, name);
+    if (!original || original.reference.document.uri !== type.document.uri || !original.reference.node.equals(type.node)) continue;
+    const modifications = original.enclosing?.modifications ?? scope.modifications;
+    for (const source of [...modifications].reverse()) {
+      const argumentsNode = source.node.childForFieldName('arguments');
+      for (const argument of argumentsNode?.namedChildren ?? []) {
+        if (argument.type !== 'class_redeclaration' || !argument.childForFieldName('redeclare')) continue;
+        const specifier = argument.childForFieldName('classDefinition')?.childForFieldName('classSpecifier');
+        if (specifier?.childForFieldName('identifier')?.text !== name) continue;
+        const replacement = resolveDeclaredType(source.document, specifier);
+        return replacement ? {
+          reference: replacement,
+          modifications: classModification(source.document, specifier),
+        } : null;
+      }
+    }
+    // This is the nearest instance owning the declaration. Its default must not
+    // borrow an override from an enclosing instance of the same class.
+    return undefined;
+  }
+  return undefined;
+}
+
+/** Resolve each type qualifier in the instance before following the rest of the path. */
+function modifiedDeclaredType(
+  document: ModelicaDocument,
+  node: SyntaxNode,
+  enclosing: ModifiedReference | undefined,
+): ModifiedReference | null {
+  const specifier = node.childForFieldName('typeSpecifier');
+  if (!specifier || specifier.hasError) return null;
+  const type = TreeSitterUtil.getTypeSpecifier(specifier);
+  let context: ModifiedReference | null = null;
+  let declaringClass = TreeSitterUtil.findParent(node, parent => parent.type === 'class_definition');
+  if (node.type === 'short_class_specifier' && declaringClass) {
+    declaringClass = TreeSitterUtil.findParent(declaringClass, parent => parent.type === 'class_definition');
+  }
+  if (!type.isGlobal && enclosing && declaringClass && document.uri === enclosing.reference.document.uri &&
+      declaringClass.equals(enclosing.reference.node)) {
+    const local = modifiedMember(enclosing, type.symbols[0]);
+    if (local?.reference.kind === 'class') context = local;
+  }
+  if (!context) {
+    const reference = resolveReference(document.project, type.isGlobal
+      ? new UnresolvedAbsoluteReference([type.symbols[0]], 'class')
+      : new UnresolvedRelativeReference(document, specifier, [type.symbols[0]], 'class'), 'declaration');
+    if (!reference) return null;
+    context = { reference, modifications: [], enclosing };
+  }
+  return resolveMemberReference(context, type.symbols.slice(1));
+}
+
+/** Follow component types and aliases while retaining the instance environment. */
+function modifiedClass(input: ModifiedReference): ModifiedReference | null {
+  let current = input;
+  const visited = new Set<string>();
+  while (true) {
+    const reference = current.reference;
+    const key = `${reference.document.uri}:${reference.node.id}`;
+    if (visited.has(key)) return null;
+    visited.add(key);
+    if (reference.kind === 'variable') {
+      const type = modifiedDeclaredType(reference.document, reference.node, current.enclosing);
+      if (!type) return null;
+      current = { ...type, modifications: [...type.modifications, ...current.modifications] };
+      continue;
+    }
+    const replacement = typeRedeclaration(reference, current.enclosing);
+    if (replacement === null) return null;
+    if (replacement) {
+      current = { ...current, reference: replacement.reference,
+        modifications: [...replacement.modifications, ...current.modifications] };
+      continue;
+    }
+    const specifier = reference.node.childForFieldName('classSpecifier');
+    if (specifier?.type !== 'short_class_specifier') return current;
+    const base = modifiedDeclaredType(reference.document, specifier, current.enclosing);
+    if (!base) return null;
+    current = { ...base,
+      modifications: [...base.modifications, ...classModification(reference.document, specifier), ...current.modifications] };
+  }
+}
+
+function memberModifications(scope: ModifiedReference, name: string): ModificationSource[] {
+  const result: ModificationSource[] = [];
+  for (const source of scope.modifications) {
+    for (const argument of source.node.childForFieldName('arguments')?.namedChildren ?? []) {
+      const modifiedName = argument.childForFieldName('name');
+      if (argument.type === 'element_modification' && modifiedName?.text === name) {
+        const modification = argument.childForFieldName('modification');
+        if (modification) result.push(...classModification(source.document, modification));
+      }
+    }
+  }
+  return result;
+}
+
+/** Look up a member without lexical fallback, carrying inheritance modifiers to its declaration. */
+function modifiedMember(
+  scope: ModifiedReference,
+  name: string,
+  visited = new Set<string>(),
+): ModifiedReference | null {
+  const reference = scope.reference;
+  const key = `${reference.document.uri}:${reference.node.id}`;
+  if (visited.has(key)) return null;
+  visited.add(key);
+  // The existing resolver's class-kind search checks direct declarations only.
+  const member = findDeclarationInClass(reference.document, reference.node, [name], 'class');
+  if (member) {
+    let document = member.document;
+    let node = member.node;
+    if (member.kind === 'variable') {
+      for (const source of scope.modifications) {
+        for (const argument of source.node.childForFieldName('arguments')?.namedChildren ?? []) {
+          const clause = argument.childForFieldName('componentClause');
+          if (argument.type === 'component_redeclaration' && argument.childForFieldName('redeclare') &&
+              clause && TreeSitterUtil.getDeclaredIdentifiers(clause).includes(name)) {
+            document = source.document;
+            node = clause;
+          }
+        }
+      }
+    }
+    const declaration = node.childForFieldName('componentDeclarations')?.namedChildren
+      .map(component => component.childForFieldName('declaration'))
+      .find(declaration => declaration?.childForFieldName('identifier')?.text === name);
+    const modification = declaration?.childForFieldName('modification');
+    return {
+      reference: new ResolvedReference(document, node, [...reference.symbols, name], member.kind),
+      enclosing: scope,
+      modifications: [...(modification ? classModification(document, modification) : []), ...memberModifications(scope, name)],
+    };
+  }
+  const elements = reference.node.childForFieldName('classSpecifier')?.children
+    .filter(TreeSitterUtil.isElementList).flatMap(list => list.namedChildren) ?? [];
+  for (const element of elements) {
+    if (element.type !== 'extends_clause') continue;
+    const base = resolveDeclaredType(reference.document, element);
+    if (!base) continue;
+    const inherited = modifiedClass({
+      reference: base,
+      enclosing: scope.enclosing,
+      modifications: [...classModification(reference.document, element), ...scope.modifications],
+    });
+    if (!inherited) continue;
+    const result = modifiedMember(inherited, name, visited);
+    if (result) return result;
+  }
+  return null;
+}
+
+function resolveMemberReference(owner: ModifiedReference, symbols: string[]): ModifiedReference | null {
+  let current = owner;
   for (const symbol of symbols) {
-    if (current.kind === 'variable') current = variableRefToClassRef(current);
-    if (!current) return null;
-    const member = findDeclarationInClass(current.document, current.node, [symbol], undefined);
+    const scope = modifiedClass(current);
+    if (!scope) return null;
+    const member = modifiedMember(scope, symbol);
     if (!member) return null;
-    current = new ResolvedReference(member.document, member.node, [...current.symbols, symbol], member.kind);
+    current = member;
   }
   return current;
 }
 
-/** Resolve the label of an element modification in the type it modifies. */
+function modificationScope(document: ModelicaDocument, modification: SyntaxNode): ModifiedReference | null {
+  const owner = modification.parent;
+  let scope: ModifiedReference | null = null;
+  if (owner?.type === 'modification') {
+    const modified = owner.parent;
+    if (modified?.type === 'declaration') {
+      const clause = TreeSitterUtil.findParent(modified, node => node.type === 'component_clause');
+      const type = clause && resolveDeclaredType(document, clause);
+      if (type) scope = { reference: type, modifications: [] };
+    } else if (modified?.type === 'element_modification') {
+      const name = modified.childForFieldName('name');
+      const outer = modified.parent?.parent;
+      if (name && outer?.type === 'class_modification') {
+        const enclosing = modificationScope(document, outer);
+        if (enclosing) scope = resolveMemberReference(enclosing, TreeSitterUtil.getTypeSpecifier(name).symbols);
+      }
+    }
+  } else if (owner && ['extends_clause', 'short_class_specifier', 'constraining_clause'].includes(owner.type)) {
+    const type = resolveDeclaredType(document, owner);
+    if (type) scope = { reference: type, modifications: [] };
+  }
+  if (!scope) return null;
+  return { ...scope, modifications: [
+    ...scope.modifications.filter(source => source.document.uri !== document.uri || !source.node.equals(modification)),
+    { document, node: modification },
+  ] };
+}
+
+/** Resolve the label of an element modification in its effective instance type. */
 export function resolveModificationName(
   document: ModelicaDocument,
   name: SyntaxNode,
@@ -672,19 +876,6 @@ export function resolveModificationName(
   const argumentsNode = name.parent?.parent;
   const modification = argumentsNode?.parent;
   if (argumentsNode?.type !== 'argument_list' || modification?.type !== 'class_modification') return null;
-  const owner = modification.parent;
-  let scope: ResolvedReference | null = null;
-  if (owner?.type === 'modification') {
-    const modified = owner.parent;
-    if (modified?.type === 'declaration') {
-      const clause = TreeSitterUtil.findParent(modified, node => node.type === 'component_clause');
-      if (clause) scope = resolveDeclaredType(document, clause);
-    } else if (modified?.type === 'element_modification') {
-      const outerName = modified.childForFieldName('name');
-      if (outerName) scope = resolveModificationName(document, outerName, TreeSitterUtil.getTypeSpecifier(outerName).symbols);
-    }
-  } else if (owner && ['extends_clause', 'short_class_specifier', 'constraining_clause'].includes(owner.type)) {
-    scope = resolveDeclaredType(document, owner);
-  }
-  return scope ? resolveMemberReference(scope, symbols) : null;
+  const scope = modificationScope(document, modification);
+  return scope ? resolveMemberReference(scope, symbols)?.reference ?? null : null;
 }

@@ -162,6 +162,16 @@ private slots:
     client.changeDocument(uri("Use.mo"), alternate);
     QVERIFY2(definition("Alternate.mo", alternate.section('\n', 2, 2).indexOf("Ti") + 1, 2, 2, 2),
              "Modifier did not follow the unsaved component type change");
+    // The effective type of a replaceable class belongs to this instance.
+    writeFile("Wrapper.mo", "within Smoke;\nmodel Wrapper\n  replaceable model C=Base;\n  C item;\nend Wrapper;\n");
+    const QString redeclared = "within Smoke;\nmodel Use\n  Wrapper w(redeclare model C=Alternate, item(Ti=0.1));\nend Use;\n";
+    client.changeDocument(uri("Use.mo"), redeclared);
+    QVERIFY2(definition("Alternate.mo", redeclared.section('\n', 2, 2).indexOf("Ti") + 1, 2, 2, 2),
+             "Modifier ignored the instance class redeclaration");
+    const QString defaultType = QString(redeclared).replace("redeclare model C=Alternate, ", "");
+    client.changeDocument(uri("Use.mo"), defaultType);
+    QVERIFY2(definition("Base.mo", defaultType.section('\n', 2, 2).indexOf("Ti") + 1, 2, 2, 2),
+             "Removing the redeclaration did not restore the default type");
     disk.seek(0);
     QCOMPARE(disk.readAll(), source.toUtf8());
     client.closeDocument(uri("Use.mo"));
