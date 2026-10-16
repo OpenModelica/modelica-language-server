@@ -42,6 +42,11 @@ jobs:
           path: .omedit-gui-openmodelica
           persist-credentials: false
 
+      - name: Apply server-owned GUI regression tests
+        run: |
+          git -C .omedit-gui-openmodelica apply --check "$GITHUB_WORKSPACE/tests/omedit-gui/modifier-navigation.patch"
+          git -C .omedit-gui-openmodelica apply "$GITHUB_WORKSPACE/tests/omedit-gui/modifier-navigation.patch"
+
       - name: Initialize compiler dependencies
         working-directory: .omedit-gui-openmodelica
         run: git submodule update --init --recursive --depth 1 OMCompiler/3rdParty OMCompiler/Compiler/boot/bomc
