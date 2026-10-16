@@ -319,6 +319,43 @@ npm --prefix server run test:msl -- /path/to/ModelicaStandardLibrary/Modelica
 npx vsce package
 ```
 
+## Releasing
+
+Releases are started manually with the **Release** GitHub Actions workflow.
+Pushing a tag no longer publishes packages.
+
+1. Bump the version with `npm run version:patch`, `npm run version:minor` or
+   `npm run version:major`. Commit all three package manifests and lockfiles,
+   along with the changelog, and merge the changes to the release branch.
+2. Open **Actions → Release → Run workflow** and select that branch, normally
+   `main`. Enter the committed version without `v`, for example `0.3.8`.
+3. Optionally check **dry_run** to run validation, tests and packaging without
+   creating a tag or publishing anything. Start another run with that option
+   unchecked to publish.
+
+The workflow checks the extension, client and server versions and their
+lockfiles, rejects an existing release tag, then calls the same build and test
+workflow used by CI. All build, MSL sanity and OMEdit Qt client jobs must pass.
+The separate OMEdit GUI workflow continues to run independently.
+Publication creates `v<version>` at the exact commit selected when the run
+started, attaches the VSIX, npm package, five platform binaries and both WASM
+files to a GitHub release, and publishes to the Visual Studio Marketplace,
+Open VSX and npm. The workflow supports stable `major.minor.patch` versions.
+
+Maintainers need the existing `VSCE_PAT` and `OPEN_VSX_TOKEN` repository
+secrets. Configure the npm trusted publisher for
+`@openmodelica/modelica-language-server` to use repository
+`OpenModelica/modelica-language-server` and workflow filename **`release.yml`**
+(previously `test.yml`). npm authenticates using the job's OIDC token; see
+[npm trusted publishing](https://docs.npmjs.com/trusted-publishers/).
+
+After the workflow is merged to the default branch, it can also be run with
+the [GitHub CLI](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow):
+
+```bash
+gh workflow run release.yml --ref main -f version=0.3.8 -f dry_run=true
+```
+
 ## License
 
 modelica-language-server is licensed under the OSMC Public License v1.8, see
