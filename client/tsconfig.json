@@ -5,6 +5,7 @@
     "lib": [
       "es2020"
     ],
+    "types": ["node", "mocha"],
     "outDir": "out",
     "rootDir": "src",
     "sourceMap": true,
