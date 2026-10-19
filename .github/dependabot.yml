@@ -15,6 +15,11 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    # typescript-eslint currently requires TypeScript >=4.8.4 <6.1.0.
+    # Remove this restriction when its peer dependency supports newer versions.
+    ignore:
+      - dependency-name: typescript
+        versions: [">=6.1.0"]
     groups:
       npm-root:
         update-types:
